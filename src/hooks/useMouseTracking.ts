@@ -51,14 +51,18 @@ export function useMouseTracking() {
   }, [handleMouseMove]);
 }
 
-/** 全屏鼠标跟随：轮询全局光标位置，使助手视线跟随屏幕上的鼠标 */
-export function useGlobalMouseFollow() {
+/** 全屏鼠标跟随：轮询全局光标位置，使助手视线跟随屏幕上的鼠标。打字中（skipWhenTyping=true）时不更新，让“随机键位”可见 */
+export function useGlobalMouseFollow(skipWhenTyping = false) {
   const manager = Live2DManager.getInstance();
   const appWindow = getCurrentWebviewWindow();
 
   useEffect(() => {
     let raf = 0;
     const tick = async () => {
+      if (skipWhenTyping) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
       try {
         const [cursor, pos, size, scaleFactor] = await Promise.all([
           invoke<[number, number]>('get_global_cursor_position'),
@@ -80,10 +84,12 @@ export function useGlobalMouseFollow() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [skipWhenTyping]);
 }
 
-const TYPING_PARAMS = ['CatParamLeftHandDown', 'ParamMouseLeftDown', 'ParamMouseRightDown'] as const;
+// 模拟键盘区域：每次敲键前随机一个“键位”（ParamMouseX/Y 驱动手/视线落点），再按下键盘
+const KEY_ZONE_MIN = 0.25;
+const KEY_ZONE_MAX = 0.75;
 
 export function useTypingAnimation() {
   const manager = Live2DManager.getInstance();
@@ -93,11 +99,21 @@ export function useTypingAnimation() {
   const startTyping = useCallback(() => {
     try {
       const tick = () => {
-        const param = TYPING_PARAMS[Math.floor(Math.random() * TYPING_PARAMS.length)];
-        manager.trySetParameter?.(param, 1);
+        // 随机一个键位（不同按键位置），再按下
+        const rangeX = manager.getParameterRange?.('ParamMouseX');
+        const rangeY = manager.getParameterRange?.('ParamMouseY');
+        if (rangeX && rangeY && rangeX.min != null && rangeX.max != null && rangeY.min != null && rangeY.max != null) {
+          const spanX = rangeX.max - rangeX.min;
+          const spanY = rangeY.max - rangeY.min;
+          const t = KEY_ZONE_MIN + Math.random() * (KEY_ZONE_MAX - KEY_ZONE_MIN);
+          const u = KEY_ZONE_MIN + Math.random() * (KEY_ZONE_MAX - KEY_ZONE_MIN);
+          manager.setParameterValue('ParamMouseX', rangeX.min + t * spanX);
+          manager.setParameterValue('ParamMouseY', rangeY.min + u * spanY);
+        }
+        manager.trySetParameter?.('CatParamLeftHandDown', 1);
         const releaseMs = 50 + Math.random() * 80;
         keyReleaseRef.current = window.setTimeout(() => {
-          manager.trySetParameter?.(param, 0);
+          manager.trySetParameter?.('CatParamLeftHandDown', 0);
           keyReleaseRef.current = null;
         }, releaseMs);
       };
@@ -131,9 +147,7 @@ export function useTypingAnimation() {
         clearTimeout(keyReleaseRef.current);
         keyReleaseRef.current = null;
       }
-      for (const p of TYPING_PARAMS) {
-        manager.trySetParameter?.(p, 0);
-      }
+      manager.trySetParameter?.('CatParamLeftHandDown', 0);
       manager.trySetParameter?.('ParamMouthOpenY', 0);
     } catch (_) {}
   }, []);

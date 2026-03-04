@@ -38,7 +38,7 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { currentModel } = useModel();
   const { startTyping, stopTyping } = useTypingAnimation();
-  useGlobalMouseFollow();
+  useGlobalMouseFollow(isGenerating);
   const [settingsModelPath, setSettingsModelPath] = useState<string | null>(null);
   // 优先使用设置里保存的模型路径，否则用当前选中的预设路径，否则默认 elsia（避免启动时先显示 SVG 猫）；Live2DPet 内会解析名称
   const rawModelPath =

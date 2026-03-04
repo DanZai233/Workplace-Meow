@@ -179,9 +179,14 @@ export class AIService {
       throw new Error('Base URL not configured');
     }
 
-    const requestMessages = systemInstruction
+    const raw = systemInstruction
       ? [{ role: 'system', content: systemInstruction }, ...messages]
       : messages;
+    // 火山引擎等 API 要求 role 为 assistant，不接受 model
+    const requestMessages = raw.map((m) => ({
+      ...m,
+      role: m.role === 'model' ? 'assistant' : m.role,
+    }));
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
@@ -240,6 +245,10 @@ export class AIService {
     systemInstruction?: string
   ): AsyncGenerator<string, void, unknown> {
     const baseUrl = this.config.baseUrl || 'https://api.anthropic.com/v1';
+    const requestMessages = messages.map((m) => ({
+      ...m,
+      role: m.role === 'model' ? 'assistant' : m.role,
+    }));
 
     const response = await fetch(`${baseUrl}/messages`, {
       method: 'POST',
@@ -253,7 +262,7 @@ export class AIService {
         max_tokens: 4096,
         stream: true,
         system: systemInstruction,
-        messages: messages,
+        messages: requestMessages,
       }),
     });
 
