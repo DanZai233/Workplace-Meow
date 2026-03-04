@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import Live2DManager from '../utils/live2d-manager';
@@ -51,15 +51,25 @@ export function useMouseTracking() {
   }, [handleMouseMove]);
 }
 
-/** 全屏鼠标跟随：轮询全局光标位置，使助手视线跟随屏幕上的鼠标。打字中（skipWhenTyping=true）时不更新，让“随机键位”可见 */
-export function useGlobalMouseFollow(skipWhenTyping = false) {
+/** 全屏鼠标跟随：轮询全局光标位置，使助手视线跟随屏幕上的鼠标。getShouldSkip 为 true、返回 true 或 ref.current() 为 true 时不更新（打字/拖动时） */
+export function useGlobalMouseFollow(
+  getShouldSkip: boolean | (() => boolean) | React.MutableRefObject<() => boolean> = false
+) {
   const manager = Live2DManager.getInstance();
   const appWindow = getCurrentWebviewWindow();
 
   useEffect(() => {
     let raf = 0;
     const tick = async () => {
-      if (skipWhenTyping) {
+      let shouldSkip: boolean;
+      if (typeof getShouldSkip === 'object' && getShouldSkip !== null && 'current' in getShouldSkip) {
+        shouldSkip = getShouldSkip.current?.() ?? false;
+      } else if (typeof getShouldSkip === 'function') {
+        shouldSkip = getShouldSkip();
+      } else {
+        shouldSkip = Boolean(getShouldSkip);
+      }
+      if (shouldSkip) {
         raf = requestAnimationFrame(tick);
         return;
       }
@@ -84,7 +94,7 @@ export function useGlobalMouseFollow(skipWhenTyping = false) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [skipWhenTyping]);
+  }, [getShouldSkip]);
 }
 
 // 模拟键盘区域：每次敲键前随机一个“键位”（ParamMouseX/Y 驱动手/视线落点），再按下键盘

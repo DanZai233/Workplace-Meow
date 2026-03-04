@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { listen, emit } from '@tauri-apps/api/event';
 import { GoogleGenAI } from '@google/genai';
 import { PERSONAS, QUICK_TOOLS, Message, PetState, Persona } from './constants';
@@ -26,7 +27,16 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
-  const dragStartRef = useRef<{ winX: number; winY: number; mouseX: number; mouseY: number } | null>(null);
+  const dragStartRef = useRef<{
+    winX: number;
+    winY: number;
+    mouseX: number;
+    mouseY: number;
+    scaleFactor: number;
+  } | null>(null);
+  const DRAG_THRESHOLD_PX = 5;
+  const skipMouseFollowRef = useRef<() => boolean>(() => false);
+  skipMouseFollowRef.current = () => isGenerating || isDraggingRef.current;
   const chatStateRef = useRef<{ messages: Message[]; isGenerating: boolean; activePersona: Persona }>({ messages, isGenerating, activePersona });
   const handleSendRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
   const [aiConfig, setAiConfig] = useState<AIConfig>({
@@ -38,7 +48,7 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { currentModel } = useModel();
   const { startTyping, stopTyping } = useTypingAnimation();
-  useGlobalMouseFollow(isGenerating);
+  useGlobalMouseFollow(skipMouseFollowRef);
   const [settingsModelPath, setSettingsModelPath] = useState<string | null>(null);
   // 优先使用设置里保存的模型路径，否则用当前选中的预设路径，否则默认 elsia（避免启动时先显示 SVG 猫）；Live2DPet 内会解析名称
   const rawModelPath =
@@ -106,26 +116,43 @@ export default function App() {
     return () => document.removeEventListener('click', close);
   }, [menuOpen]);
 
-  // 手动拖动窗口（兼容 Windows 等 data-tauri-drag-region 不生效的平台）
+  // 手动拖动窗口：仅移动超过阈值才算拖动，并用 scaleFactor 修正位移（跟手）
   const handleDragStart = async (e: React.MouseEvent) => {
     if (!dragEnabled || (e.target as HTMLElement).closest('button')) return;
     e.preventDefault();
     try {
       const [winX, winY] = await invoke<[number, number]>('get_window_position');
-      isDraggingRef.current = true;
-      dragStartRef.current = { winX, winY, mouseX: e.clientX, mouseY: e.clientY };
+      const scaleFactor = await getCurrentWebviewWindow().scaleFactor();
+      dragStartRef.current = {
+        winX,
+        winY,
+        mouseX: e.clientX,
+        mouseY: e.clientY,
+        scaleFactor,
+      };
     } catch (err) {
       console.error('get_window_position failed', err);
+      dragStartRef.current = null;
     }
   };
   useEffect(() => {
     if (!dragEnabled) return;
-    const onMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current || !dragStartRef.current) return;
+    const onMove = async (e: MouseEvent) => {
+      const start = dragStartRef.current;
+      if (!start) return;
+      const dx = e.clientX - start.mouseX;
+      const dy = e.clientY - start.mouseY;
+      if (!isDraggingRef.current) {
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+        isDraggingRef.current = true;
+        const [winX, winY] = await invoke<[number, number]>('get_window_position').catch(() => [start.winX, start.winY]);
+        dragStartRef.current = { ...start, winX, winY, mouseX: e.clientX, mouseY: e.clientY };
+      }
+      const scale = dragStartRef.current.scaleFactor;
       const { winX, winY, mouseX, mouseY } = dragStartRef.current;
       invoke('set_window_position', {
-        x: winX + (e.clientX - mouseX),
-        y: winY + (e.clientY - mouseY),
+        x: Math.round(winX + (e.clientX - mouseX) * scale),
+        y: Math.round(winY + (e.clientY - mouseY) * scale),
       }).catch(() => {});
     };
     const onUp = () => {
