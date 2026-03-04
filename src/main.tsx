@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {HashRouter, Routes, Route} from 'react-router-dom';
 import App from './App.tsx';
 import SettingsPage from './pages/Settings';
+import ChatWindow from './pages/ChatWindow';
 import { installGlobalErrorHandlers } from './utils/debug-log';
 import './index.css';
 
@@ -14,7 +15,7 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/chat" element={<App />} />
+        <Route path="/chat" element={<ChatWindow />} />
       </Routes>
     </HashRouter>
   </StrictMode>,

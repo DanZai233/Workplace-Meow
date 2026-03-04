@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { listen, emit } from '@tauri-apps/api/event';
 import { GoogleGenAI } from '@google/genai';
 import { PERSONAS, QUICK_TOOLS, Message, PetState, Persona } from './constants';
 import { Live2DPetWithBoundary } from './components/Live2DPet';
@@ -9,9 +9,8 @@ import { useTypingAnimation } from './hooks/useMouseTracking';
 import { useGlobalMouseFollow } from './hooks/useMouseTracking';
 import { PET_DISPLAY_WIDTH, PET_DISPLAY_HEIGHT } from './utils/live2d-manager';
 import { AIService, AIConfig } from './lib/ai-providers';
-import { Send, Menu, X, User, Sparkles, Briefcase, Settings, MessageSquare, MoreVertical, GripVertical, Power, Terminal } from 'lucide-react';
+import { Settings, MessageSquare, MoreVertical, GripVertical, Power, Terminal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import ReactMarkdown from 'react-markdown';
 
 let aiService: AIService | null = null;
 
@@ -23,12 +22,13 @@ export default function App() {
   const [petState, setPetState] = useState<PetState>('idle');
   const [petBubble, setPetBubble] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showChat, setShowChat] = useState(false);
   const [dragEnabled, setDragEnabled] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ winX: number; winY: number; mouseX: number; mouseY: number } | null>(null);
+  const chatStateRef = useRef<{ messages: Message[]; isGenerating: boolean; activePersona: Persona }>({ messages, isGenerating, activePersona });
+  const handleSendRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     provider: 'gemini',
     apiKey: '',
@@ -48,9 +48,30 @@ export default function App() {
 
   useEffect(() => {
     const w = PET_DISPLAY_WIDTH + 40;
-    const h = showChat ? PET_DISPLAY_HEIGHT + 60 + 220 : PET_DISPLAY_HEIGHT + 60;
+    const h = PET_DISPLAY_HEIGHT + 90;
     invoke('set_main_window_size', { width: w, height: h }).catch(() => {});
-  }, [showChat]);
+  }, []);
+
+  chatStateRef.current = { messages, isGenerating, activePersona };
+
+  // Sync chat state to separate chat window
+  useEffect(() => {
+    emit('chat-state', chatStateRef.current);
+  }, [messages, isGenerating, activePersona]);
+
+  useEffect(() => {
+    const unlistenReq = listen('request-chat-state', () => {
+      emit('chat-state', chatStateRef.current);
+    });
+    const unlistenSend = listen<{ text?: string }>('chat-send', (e) => {
+      const text = e.payload?.text;
+      if (typeof text === 'string' && text.trim()) handleSendRef.current(text.trim());
+    });
+    return () => {
+      unlistenReq.then((fn) => fn());
+      unlistenSend.then((fn) => fn());
+    };
+  }, []);
 
   // Load settings on mount and when settings window saves
   useEffect(() => {
@@ -167,17 +188,9 @@ export default function App() {
       if (aiService) {
         for await (const chunk of aiService.sendMessageStream(chatMessages, activePersona.prompt)) {
           fullText += chunk;
-          setMessages(prev => prev.map(msg => 
+          setMessages(prev => prev.map(msg =>
             msg.id === modelMsgId ? { ...msg, text: fullText } : msg
           ));
-          
-          const words = fullText.split(/[,.!?，。！？\n]/).filter(Boolean);
-          if (words.length > 0) {
-            const lastPhrase = words[words.length - 1].trim();
-            if (lastPhrase) {
-              setPetBubble(lastPhrase.substring(0, 12) + (lastPhrase.length > 12 ? '...' : ''));
-            }
-          }
         }
       } else {
         throw new Error('AI service not initialized');
@@ -196,9 +209,10 @@ export default function App() {
       setIsGenerating(false);
     }
   };
+  handleSendRef.current = handleSend;
 
   const handlePetDoubleClick = () => {
-    setShowChat(!showChat);
+    invoke('toggle_window', { label: 'chat', visible: true }).catch(() => {});
   };
 
   const handleOpenSettings = async () => {
@@ -211,13 +225,10 @@ export default function App() {
     }
   };
 
-  const CHAT_TOP_HEIGHT = 220;
-
   return (
-    <div className="h-screen font-sans overflow-hidden relative rounded-2xl" style={{ background: 'transparent', paddingTop: showChat ? CHAT_TOP_HEIGHT : 0 }}>
+    <div className="h-screen font-sans overflow-hidden relative rounded-2xl" style={{ background: 'transparent' }}>
       <div
         className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl ${dragEnabled ? 'cursor-move' : ''}`}
-        style={showChat ? { top: CHAT_TOP_HEIGHT, left: 0, right: 0, bottom: 0 } : undefined}
         onMouseDown={handleDragStart}
       >
         <div
@@ -233,87 +244,6 @@ export default function App() {
           />
         </div>
       </div>
-
-      {/* 聊天框：悬浮在顶部区域，完全在角色头顶不挡脑袋 */}
-      <AnimatePresence>
-        {showChat && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            className="absolute left-1/2 top-2 -translate-x-1/2 z-[100] pointer-events-auto shadow-2xl rounded-2xl border border-slate-200 overflow-hidden"
-            style={{ width: Math.min(PET_DISPLAY_WIDTH + 40, 360), maxHeight: CHAT_TOP_HEIGHT - 16 }}
-            onClick={e => e.stopPropagation()}
-            onMouseDown={e => e.stopPropagation()}
-          >
-              <div className="bg-white rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight: CHAT_TOP_HEIGHT - 16 }}>
-                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{activePersona.icon}</span>
-                    <span className="font-semibold text-white text-sm">{activePersona.name}</span>
-                  </div>
-                  <button
-                    onClick={() => setShowChat(false)}
-                    className="p-1 hover:bg-white/20 rounded-md transition-colors"
-                  >
-                    <X className="w-4 h-4 text-white" />
-                  </button>
-                </div>
-                <div className="p-3 space-y-2 overflow-y-auto flex-1 min-h-0">
-                  {messages.map((msg) => (
-                    <div key={msg.id} className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-xs ${
-                        msg.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'
-                      }`}>
-                        {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : activePersona.icon}
-                      </div>
-                      <div className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} max-w-[85%]`}>
-                        <div className={`px-2.5 py-1.5 rounded-xl text-xs ${
-                          msg.role === 'user'
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-slate-100 text-slate-800'
-                        }`}>
-                          {msg.role === 'user' ? (
-                            <div className="whitespace-pre-wrap">{msg.text}</div>
-                          ) : (
-                            <div className="prose prose-sm prose-slate max-w-none">
-                              {msg.text ? <ReactMarkdown>{msg.text}</ReactMarkdown> : <span className="animate-pulse">...</span>}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-                <div className="p-2 border-t border-slate-200 shrink-0">
-                  <div className="flex gap-2">
-                    <textarea
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend(input);
-                        }
-                      }}
-                      placeholder={`和${activePersona.name}聊聊...`}
-                      className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 resize-none text-sm"
-                      rows={2}
-                    />
-                    <button
-                      onClick={() => handleSend(input)}
-                      disabled={!input.trim() || isGenerating}
-                      className="p-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-lg transition-colors self-end"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {petBubble && (
@@ -331,7 +261,7 @@ export default function App() {
 
       <div className="absolute top-4 right-4 z-50 flex gap-2">
         <button
-          onClick={() => setShowChat(!showChat)}
+          onClick={() => invoke('toggle_window', { label: 'chat', visible: true }).catch(() => {})}
           className="p-3 bg-white rounded-xl shadow-lg border-2 border-slate-200 hover:bg-slate-50 hover:border-indigo-300 transition-colors text-slate-800"
           title="打开聊天"
         >
@@ -371,11 +301,11 @@ export default function App() {
                 打开设置
               </button>
               <button
-                onClick={() => { setShowChat(!showChat); setMenuOpen(false); }}
+                onClick={() => { setMenuOpen(false); invoke('toggle_window', { label: 'chat', visible: true }).catch(() => {}); }}
                 className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
               >
                 <MessageSquare className="w-4 h-4 text-slate-500" />
-                {showChat ? '关闭聊天' : '打开聊天'}
+                打开聊天
               </button>
               <button
                 onClick={() => { setDragEnabled((e) => !e); setMenuOpen(false); }}

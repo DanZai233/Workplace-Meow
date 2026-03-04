@@ -88,11 +88,8 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
         const motions = modelInfo.motions;
         const findMotion = (names: string[]) => names.find((n) => motions.includes(n));
         switch (state) {
-          case 'idle': {
-            const name = findMotion(['idle', 'Idle', 'stand', '01', '00', 'idle_01']);
-            if (name != null) await manager.playMotion(name, 0);
+          case 'idle':
             break;
-          }
           case 'typing': {
             const name = findMotion(['tap_body', 'tap', 'type', 'speak', '02', '03']);
             if (name != null) await manager.playMotion(name, 0);
@@ -105,7 +102,7 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
             else if (motions.length > 1) await manager.playMotion(motions[0], 1);
             break;
           }
-          case 'listening': {
+          case 'alert': {
             const name = findMotion(['tap_body', 'listen', 'tap']);
             if (name != null) await manager.playMotion(name, 1);
             break;
@@ -119,19 +116,10 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
     triggerMotion();
   }, [state, loaded, usingDefault]);
 
-  // elsia 等模型：idle 时仅做呼吸、眨眼；不轮换表情参数，避免部分表情触发后头发/刘海被隐藏
+  // idle 时仅做眨眼；不碰呼吸/角度等，避免触发模型里会藏头发的逻辑
   useEffect(() => {
     if (!loaded || usingDefault || state !== 'idle' || !managerRef.current) return;
     const manager = managerRef.current;
-    let breathPhase = 0;
-    let breathRaf = 0;
-    const breathTick = () => {
-      breathPhase += 0.015;
-      const v = Math.sin(breathPhase) * 0.25 + 0.5;
-      manager.trySetParameter('ParamBreath', v);
-      breathRaf = requestAnimationFrame(breathTick);
-    };
-    breathRaf = requestAnimationFrame(breathTick);
     const blinkInterval = window.setInterval(() => {
       manager.trySetParameter('ParamEyeLOpen', 0);
       manager.trySetParameter('ParamEyeROpen', 0);
@@ -140,10 +128,7 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
         manager.trySetParameter('ParamEyeROpen', 1);
       }, 120 + Math.random() * 80);
     }, 2500 + Math.random() * 2000);
-    return () => {
-      cancelAnimationFrame(breathRaf);
-      window.clearInterval(blinkInterval);
-    };
+    return () => window.clearInterval(blinkInterval);
   }, [loaded, usingDefault, state]);
 
   if (usingDefault) {

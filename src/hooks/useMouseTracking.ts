@@ -8,8 +8,10 @@ export interface CursorPoint {
   y: number;
 }
 
-function applyCursorToLive2D(manager: Live2DManager, xRatio: number, yRatio: number) {
+function applyCursorToLive2D(manager: Live2DManager, xRatio: number, yRatio: number, clampAngle = false) {
   try {
+    const ANGLE_SAFE_MIN = 0.35;
+    const ANGLE_SAFE_MAX = 0.65;
     for (const id of ['ParamMouseX', 'ParamMouseY', 'ParamAngleX', 'ParamAngleY']) {
       const range = manager.getParameterRange?.(id);
       if (!range || range.min === undefined || range.max === undefined) continue;
@@ -17,6 +19,12 @@ function applyCursorToLive2D(manager: Live2DManager, xRatio: number, yRatio: num
       const ratio = isXAxis ? xRatio : yRatio;
       let value = range.max - (ratio * (range.max - range.min));
       if (isXAxis) value = -value;
+      if (clampAngle && (id === 'ParamAngleX' || id === 'ParamAngleY')) {
+        const span = (range.max - range.min) || 1;
+        const t = (value - range.min) / span;
+        const tClamped = ANGLE_SAFE_MIN + t * (ANGLE_SAFE_MAX - ANGLE_SAFE_MIN);
+        value = range.min + tClamped * span;
+      }
       manager.setParameterValue(id, value);
     }
   } catch (_) {}
@@ -66,7 +74,7 @@ export function useGlobalMouseFollow() {
         const relY = (gy - wy) / physH;
         const xRatio = Math.max(0, Math.min(1, relX));
         const yRatio = Math.max(0, Math.min(1, relY));
-        applyCursorToLive2D(manager, xRatio, yRatio);
+        applyCursorToLive2D(manager, xRatio, yRatio, true);
       } catch (_) {}
       raf = requestAnimationFrame(tick);
     };
@@ -74,6 +82,8 @@ export function useGlobalMouseFollow() {
     return () => cancelAnimationFrame(raf);
   }, []);
 }
+
+const TYPING_PARAMS = ['CatParamLeftHandDown', 'ParamMouseLeftDown', 'ParamMouseRightDown'] as const;
 
 export function useTypingAnimation() {
   const manager = Live2DManager.getInstance();
@@ -83,15 +93,16 @@ export function useTypingAnimation() {
   const startTyping = useCallback(() => {
     try {
       const tick = () => {
-        manager.trySetParameter?.('CatParamLeftHandDown', 1);
+        const param = TYPING_PARAMS[Math.floor(Math.random() * TYPING_PARAMS.length)];
+        manager.trySetParameter?.(param, 1);
         const releaseMs = 50 + Math.random() * 80;
         keyReleaseRef.current = window.setTimeout(() => {
-          manager.trySetParameter?.('CatParamLeftHandDown', 0);
+          manager.trySetParameter?.(param, 0);
           keyReleaseRef.current = null;
         }, releaseMs);
       };
       tick();
-      const intervalMs = 100 + Math.random() * 150;
+      const intervalMs = 80 + Math.random() * 120;
       keyPressTimerRef.current = window.setInterval(tick, intervalMs);
 
       const modelInfo = manager.getModelInfo?.();
@@ -104,7 +115,7 @@ export function useTypingAnimation() {
         if (speakingMotion) {
           manager.playMotion(speakingMotion, 0);
         } else {
-          manager.setParameterValue('ParamMouthOpen', 0.8);
+          manager.trySetParameter?.('ParamMouthOpenY', 0.8);
         }
       }
     } catch (_) {}
@@ -120,8 +131,10 @@ export function useTypingAnimation() {
         clearTimeout(keyReleaseRef.current);
         keyReleaseRef.current = null;
       }
-      manager.trySetParameter?.('CatParamLeftHandDown', 0);
-      manager.setParameterValue('ParamMouthOpen', 0);
+      for (const p of TYPING_PARAMS) {
+        manager.trySetParameter?.(p, 0);
+      }
+      manager.trySetParameter?.('ParamMouthOpenY', 0);
     } catch (_) {}
   }, []);
 
