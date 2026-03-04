@@ -6,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Tauri
+src-tauri/target/
+src-tauri/Cargo.lock
+src-tauri/WixTools/
+
+# Live2D models
+assets/models/*/
