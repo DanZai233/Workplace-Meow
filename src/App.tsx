@@ -4,11 +4,12 @@ import { listen } from '@tauri-apps/api/event';
 import { GoogleGenAI } from '@google/genai';
 import { PERSONAS, QUICK_TOOLS, Message, PetState, Persona } from './constants';
 import { Live2DPetWithBoundary } from './components/Live2DPet';
-import { DebugOverlay } from './components/DebugOverlay';
-import { debugLog } from './utils/debug-log';
 import { useModel } from './hooks/useModel';
+import { useTypingAnimation } from './hooks/useMouseTracking';
+import { useGlobalMouseFollow } from './hooks/useMouseTracking';
+import { PET_DISPLAY_WIDTH, PET_DISPLAY_HEIGHT } from './utils/live2d-manager';
 import { AIService, AIConfig } from './lib/ai-providers';
-import { Send, Menu, X, User, Sparkles, Briefcase, Settings, MessageSquare, MoreVertical, GripVertical } from 'lucide-react';
+import { Send, Menu, X, User, Sparkles, Briefcase, Settings, MessageSquare, MoreVertical, GripVertical, Power } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 
@@ -36,6 +37,8 @@ export default function App() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { currentModel } = useModel();
+  const { startTyping, stopTyping } = useTypingAnimation();
+  useGlobalMouseFollow();
   const [settingsModelPath, setSettingsModelPath] = useState<string | null>(null);
   // 优先使用设置里保存的模型路径，否则用当前选中的预设路径，否则默认 elsia（避免启动时先显示 SVG 猫）；Live2DPet 内会解析名称
   const rawModelPath =
@@ -43,9 +46,10 @@ export default function App() {
     (currentModel?.path && currentModel.id !== 'custom' ? currentModel.path : undefined) ||
     'elsia';
 
-  // 启动时写一条调试信息，便于在控制台/调试栏确认页面已加载
   useEffect(() => {
-    debugLog.add('info', '主窗口 App 已挂载');
+    const w = PET_DISPLAY_WIDTH + 40;
+    const h = PET_DISPLAY_HEIGHT + 60;
+    invoke('set_main_window_size', { width: w, height: h }).catch(() => {});
   }, []);
 
   // Load settings on mount and when settings window saves
@@ -147,6 +151,7 @@ export default function App() {
     setPetState('typing');
     setPetBubble('');
     setIsGenerating(true);
+    startTyping();
 
     try {
       const modelMsgId = (Date.now() + 1).toString();
@@ -187,13 +192,13 @@ export default function App() {
       setPetBubble('出错了喵...');
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: '抱歉，我遇到了一点问题，请稍后再试。' }]);
     } finally {
+      stopTyping();
       setIsGenerating(false);
     }
   };
 
   const handlePetDoubleClick = () => {
     setShowChat(!showChat);
-    invoke('toggle_window', { label: 'chat', visible: !showChat });
   };
 
   const handleOpenSettings = async () => {
@@ -207,24 +212,38 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen font-sans overflow-hidden relative bg-white/95 rounded-2xl shadow-xl border border-slate-200/80 pt-8">
-      <DebugOverlay />
+    <div className="h-screen font-sans overflow-hidden relative rounded-2xl" style={{ background: 'transparent' }}>
       <div
-        className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl gap-3 ${dragEnabled ? 'cursor-move' : ''}`}
+        className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl ${dragEnabled ? 'cursor-move' : ''}`}
         onMouseDown={handleDragStart}
       >
-        {/* 聊天框开在助手头顶，不挡脸 */}
-        <AnimatePresence>
-          {showChat && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="pointer-events-auto w-[400px] max-w-[calc(100vw-2rem)] max-h-[45vh] flex flex-col shrink-0 z-10"
-              onClick={e => e.stopPropagation()}
-              onMouseDown={e => e.stopPropagation()}
-            >
-              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[45vh]">
+        <div
+          className="pointer-events-auto flex items-center justify-center shrink-0 rounded-xl overflow-hidden"
+          style={{ width: PET_DISPLAY_WIDTH, height: PET_DISPLAY_HEIGHT, background: 'transparent' }}
+          onClick={e => e.stopPropagation()}
+          onMouseDown={handleDragStart}
+        >
+          <Live2DPetWithBoundary
+            state={petState}
+            modelPath={rawModelPath}
+            onDoubleClick={handlePetDoubleClick}
+          />
+        </div>
+      </div>
+
+      {/* 聊天框：悬浮在窗口上方，完整展示 */}
+      <AnimatePresence>
+        {showChat && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            className="absolute left-1/2 top-2 -translate-x-1/2 z-[100] pointer-events-auto shadow-2xl rounded-2xl border border-slate-200 overflow-hidden"
+            style={{ width: Math.min(PET_DISPLAY_WIDTH + 40, 360), maxHeight: '85vh' }}
+            onClick={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
+          >
+              <div className="bg-white rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight: '85vh' }}>
                 <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{activePersona.icon}</span>
@@ -291,19 +310,7 @@ export default function App() {
               </div>
             </motion.div>
           )}
-        </AnimatePresence>
-        <div
-          className="pointer-events-auto w-[400px] h-[300px] flex items-center justify-center shrink-0 bg-slate-50/80 rounded-xl overflow-hidden"
-          onClick={e => e.stopPropagation()}
-          onMouseDown={handleDragStart}
-        >
-          <Live2DPetWithBoundary
-            state={petState}
-            modelPath={rawModelPath}
-            onDoubleClick={handlePetDoubleClick}
-          />
-        </div>
-      </div>
+      </AnimatePresence>
 
       <AnimatePresence>
         {petBubble && (
@@ -373,6 +380,13 @@ export default function App() {
               >
                 <GripVertical className="w-4 h-4 text-slate-500" />
                 {dragEnabled ? '锁定位置' : '解锁拖动'}
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); invoke('exit_app'); }}
+                className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
+              >
+                <Power className="w-4 h-4 text-slate-500" />
+                关闭程序
               </button>
             </motion.div>
           )}

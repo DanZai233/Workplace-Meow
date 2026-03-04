@@ -2,6 +2,7 @@ import { Component, type ReactNode, useEffect, useRef, useState } from 'react';
 import { resolveResource } from '@tauri-apps/api/path';
 import { PetState } from '../constants';
 import { loadLive2DScripts } from '../utils/load-live2d-scripts';
+import { PET_DISPLAY_WIDTH, PET_DISPLAY_HEIGHT } from '../utils/live2d-manager';
 
 interface Live2DPetProps {
   state: PetState;
@@ -22,7 +23,12 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState(false);
   const [usingDefault, setUsingDefault] = useState(!modelPath?.trim());
-  const managerRef = useRef<{ destroy: () => void; getModelInfo: () => { motions: string[] } | null; playMotion: (g: string, i: number) => unknown } | null>(null);
+  const managerRef = useRef<{
+    destroy: () => void;
+    getModelInfo: () => { motions: string[]; expressions?: string[] } | null;
+    playMotion: (g: string, i: number) => unknown;
+    trySetParameter: (id: string, value: number) => boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!modelPath?.trim()) {
@@ -47,7 +53,7 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
         if (cancelled) return;
         const manager = Live2DManager.getInstance();
         managerRef.current = manager;
-        await manager.initialize(container, resolved, 400, 300);
+        await manager.initialize(container, resolved, PET_DISPLAY_WIDTH, PET_DISPLAY_HEIGHT);
         if (cancelled) return;
         setUsingDefault(false);
         setLoaded(true);
@@ -79,31 +85,31 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
         
         if (!modelInfo) return;
 
+        const motions = modelInfo.motions;
+        const findMotion = (names: string[]) => names.find((n) => motions.includes(n));
         switch (state) {
-          case 'idle':
-            if (modelInfo.motions.includes('idle')) {
-              await manager.playMotion('idle', 0);
-            }
+          case 'idle': {
+            const name = findMotion(['idle', 'Idle', 'stand', '01', '00', 'idle_01']);
+            if (name != null) await manager.playMotion(name, 0);
             break;
-          case 'typing':
-            if (modelInfo.motions.includes('tap_body')) {
-              await manager.playMotion('tap_body', 0);
-            } else if (modelInfo.motions.length > 0) {
-              await manager.playMotion(modelInfo.motions[0], 0);
-            }
+          }
+          case 'typing': {
+            const name = findMotion(['tap_body', 'tap', 'type', 'speak', '02', '03']);
+            if (name != null) await manager.playMotion(name, 0);
+            else if (motions.length > 0) await manager.playMotion(motions[0], 0);
             break;
-          case 'thinking':
-            if (modelInfo.motions.includes('flick_head')) {
-              await manager.playMotion('flick_head', 0);
-            } else if (modelInfo.motions.length > 1) {
-              await manager.playMotion(modelInfo.motions[0], 1);
-            }
+          }
+          case 'thinking': {
+            const name = findMotion(['flick_head', 'think', '04', '05']);
+            if (name != null) await manager.playMotion(name, 0);
+            else if (motions.length > 1) await manager.playMotion(motions[0], 1);
             break;
-          case 'listening':
-            if (modelInfo.motions.includes('tap_body')) {
-              await manager.playMotion('tap_body', 1);
-            }
+          }
+          case 'listening': {
+            const name = findMotion(['tap_body', 'listen', 'tap']);
+            if (name != null) await manager.playMotion(name, 1);
             break;
+          }
         }
       } catch (error) {
         console.error('Failed to trigger motion:', error);
@@ -113,6 +119,48 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
     triggerMotion();
   }, [state, loaded, usingDefault]);
 
+  // elsia 等模型：idle 时自动触发呼吸、眨眼、随机表情（基于 cdi3 参数）
+  useEffect(() => {
+    if (!loaded || usingDefault || state !== 'idle' || !managerRef.current) return;
+    const manager = managerRef.current;
+    const EXPRESSION_PARAMS = [
+      'Param33', // 脸红
+      'Param27', // 星星眼
+      'Param24', // 眯眯眼
+      'Param28', // 疑问
+      'Param29', // 流汗
+      'Param26', // 流泪眼
+      'Param35', // 痴呆
+    ];
+    let breathPhase = 0;
+    let breathRaf = 0;
+    const breathTick = () => {
+      breathPhase += 0.015;
+      const v = Math.sin(breathPhase) * 0.5 + 0.5;
+      manager.trySetParameter('ParamBreath', v);
+      breathRaf = requestAnimationFrame(breathTick);
+    };
+    breathRaf = requestAnimationFrame(breathTick);
+    const blinkInterval = window.setInterval(() => {
+      manager.trySetParameter('ParamEyeLOpen', 0);
+      manager.trySetParameter('ParamEyeROpen', 0);
+      setTimeout(() => {
+        manager.trySetParameter('ParamEyeLOpen', 1);
+        manager.trySetParameter('ParamEyeROpen', 1);
+      }, 120 + Math.random() * 80);
+    }, 2500 + Math.random() * 2000);
+    const expressionInterval = window.setInterval(() => {
+      const id = EXPRESSION_PARAMS[Math.floor(Math.random() * EXPRESSION_PARAMS.length)];
+      if (!manager.trySetParameter(id, 1)) return;
+      setTimeout(() => manager.trySetParameter(id, 0), 2000 + Math.random() * 1500);
+    }, 12000 + Math.random() * 13000);
+    return () => {
+      cancelAnimationFrame(breathRaf);
+      window.clearInterval(blinkInterval);
+      window.clearInterval(expressionInterval);
+    };
+  }, [loaded, usingDefault, state]);
+
   if (usingDefault) {
     return <DefaultPet state={state} onDoubleClick={onDoubleClick} />;
   }
@@ -120,8 +168,15 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
   return (
     <div
       ref={containerRef}
-      className="w-[400px] h-[300px] bg-slate-100 rounded-lg overflow-hidden"
-      style={{ cursor: 'pointer' }}
+      className="rounded-lg overflow-hidden"
+      style={{
+        width: PET_DISPLAY_WIDTH,
+        height: PET_DISPLAY_HEIGHT,
+        cursor: 'pointer',
+        background: 'transparent',
+        position: 'relative',
+        isolation: 'isolate',
+      }}
       onDoubleClick={onDoubleClick}
       role="img"
       aria-label="Live2D 桌宠"
@@ -132,9 +187,9 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
 export function DefaultPet({ state, onDoubleClick }: { state: PetState; onDoubleClick?: () => void }) {
   return (
     <svg
-      width="400"
-      height="300"
-      viewBox="0 0 400 300"
+      width={PET_DISPLAY_WIDTH}
+      height={PET_DISPLAY_HEIGHT}
+      viewBox={`0 0 ${PET_DISPLAY_WIDTH} ${PET_DISPLAY_HEIGHT}`}
       fill="none"
       onDoubleClick={onDoubleClick}
       style={{ cursor: 'pointer' }}

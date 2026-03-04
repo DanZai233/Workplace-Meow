@@ -7,8 +7,10 @@ import { Application, Ticker } from 'pixi.js'
 
 Live2DModel.registerTicker(Ticker)
 
-const DEFAULT_WIDTH = 400
-const DEFAULT_HEIGHT = 300
+export const PET_DISPLAY_WIDTH = 480
+export const PET_DISPLAY_HEIGHT = 400
+const DEFAULT_WIDTH = PET_DISPLAY_WIDTH
+const DEFAULT_HEIGHT = PET_DISPLAY_HEIGHT
 
 class Live2DManager {
   private static instance: Live2DManager
@@ -26,21 +28,26 @@ class Live2DManager {
     return Live2DManager.instance;
   }
 
-  /** 由 Pixi 自己创建 canvas 并挂到 container，避免传入 React 的 canvas 导致 WebGL checkMaxIfStatementsInShader 报 0 出错（尤其 Windows） */
+  /** 由 Pixi 自己创建 canvas 并挂到 container；透明背景与窗口一致 */
   private createApp(container: HTMLElement, width: number, height: number) {
     if (this.app) return
-    // 使用不透明背景并每帧清除，避免移动时底层重影（透明 + 未清除会残留上一帧）
     this.app = new Application({
       width,
       height,
-      backgroundColor: 0xf1f5f9,
-      backgroundAlpha: 1,
+      backgroundAlpha: 0,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
       autoDensity: true,
     })
     this.canvas = this.app.view as HTMLCanvasElement
     this.container = container
     container.innerHTML = ''
+    this.canvas.style.display = 'block'
+    this.canvas.style.position = 'absolute'
+    this.canvas.style.left = '0'
+    this.canvas.style.top = '0'
+    this.canvas.style.width = '100%'
+    this.canvas.style.height = '100%'
+    this.canvas.style.pointerEvents = 'auto'
     container.appendChild(this.canvas)
   }
 
@@ -53,10 +60,9 @@ class Live2DManager {
     const { loadLive2DScripts } = await import('./load-live2d-scripts');
     await loadLive2DScripts();
 
-    if (this.model) {
+    if (this.container !== container || this.model) {
       this.destroy();
     }
-
     this.createApp(container, width, height)
 
     const basePath = this.normalizePath(modelPath);
@@ -82,6 +88,7 @@ class Live2DManager {
 
     this.model = await Live2DModel.from(modelSettings);
 
+    this.app?.stage.removeChildren();
     this.app?.stage.addChild(this.model);
 
     this.resizeModel();
@@ -95,14 +102,13 @@ class Live2DManager {
     const { width, height } = this.model;
     const scaleX = this.canvas.width / width;
     const scaleY = this.canvas.height / height;
-    // 留边距确保完整显示，避免头顶/边缘被裁切
-    const scale = Math.min(scaleX, scaleY) * 0.88;
+    const scale = Math.min(scaleX, scaleY) * 0.82;
     this.model.scale.set(scale);
 
-    // 底部对齐：锚点设脚底中心，放在画布底部，形象完整且不会裁切
-    this.model.anchor.set(0.5, 1);
-    this.model.x = this.canvas.width / 2;
-    this.model.y = this.canvas.height;
+    // 与 DefaultPet/BongoCat 一致：用模型中心做锚点，中心点放在画布约 (42%, 35%) 处，角色整体偏左上、完整入画
+    this.model.anchor.set(0.5, 0.5);
+    this.model.x = this.canvas.width * 0.42;
+    this.model.y = this.canvas.height * 0.35;
   }
 
   public playMotion(group: string, index: number) {
@@ -135,6 +141,18 @@ class Live2DManager {
     return coreModel?.setParameterValueById?.(id, Number(value));
   }
 
+  /** 仅当参数存在时设置，避免报错；返回是否设置成功 */
+  public trySetParameter(id: string, value: number): boolean {
+    const range = this.getParameterRange(id);
+    if (range.min === undefined || range.max === undefined) return false;
+    try {
+      this.setParameterValue(id, value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   public getModelInfo(): { motions: string[]; expressions: string[] } | null {
     if (!this.model) return null;
 
@@ -159,6 +177,15 @@ class Live2DManager {
       }
     } catch (_) {}
 
+    if (this.container && this.canvas && this.container.contains(this.canvas)) {
+      try {
+        this.container.removeChild(this.canvas);
+      } catch (_) {}
+      this.container.innerHTML = '';
+    }
+    this.container = null;
+    this.canvas = null;
+
     try {
       if (this.app) {
         try {
@@ -167,8 +194,6 @@ class Live2DManager {
         this.app = null;
       }
     } catch (_) {}
-    this.container = null;
-    this.canvas = null;
 
     try {
       window.removeEventListener('resize', () => this.resizeModel());

@@ -62,8 +62,11 @@ pub fn run() {
             toggle_window,
             set_window_position,
             get_window_position,
+            set_main_window_size,
+            get_global_cursor_position,
             capture_screenshot,
-            open_devtools
+            open_devtools,
+            exit_app
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -87,6 +90,11 @@ fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
     });
     let _ = fs::create_dir_all(&app_data_dir);
     app_data_dir.join("settings.json")
+}
+
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]
@@ -213,6 +221,21 @@ async fn set_window_position(window: tauri::WebviewWindow, x: i32, y: i32) -> Re
 async fn get_window_position(window: tauri::WebviewWindow) -> Result<(i32, i32), String> {
     let pos = window.outer_position().map_err(|e| e.to_string())?;
     Ok((pos.x, pos.y))
+}
+
+#[tauri::command]
+fn set_main_window_size(app: tauri::AppHandle, width: f64, height: f64) -> Result<(), String> {
+    let window = app.get_webview_window("main").ok_or("main window not found")?;
+    window.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_global_cursor_position() -> Result<(i32, i32), String> {
+    use device_query::{DeviceQuery, DeviceState};
+    let device = DeviceState::new();
+    let mouse = device.get_mouse();
+    Ok(mouse.coords)
 }
 
 #[tauri::command]
