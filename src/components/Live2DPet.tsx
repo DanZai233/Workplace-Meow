@@ -119,24 +119,15 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
     triggerMotion();
   }, [state, loaded, usingDefault]);
 
-  // elsia 等模型：idle 时自动触发呼吸、眨眼、随机表情（基于 cdi3 参数）
+  // elsia 等模型：idle 时仅做呼吸、眨眼；不轮换表情参数，避免部分表情触发后头发/刘海被隐藏
   useEffect(() => {
     if (!loaded || usingDefault || state !== 'idle' || !managerRef.current) return;
     const manager = managerRef.current;
-    const EXPRESSION_PARAMS = [
-      'Param33', // 脸红
-      'Param27', // 星星眼
-      'Param24', // 眯眯眼
-      'Param28', // 疑问
-      'Param29', // 流汗
-      'Param26', // 流泪眼
-      'Param35', // 痴呆
-    ];
     let breathPhase = 0;
     let breathRaf = 0;
     const breathTick = () => {
       breathPhase += 0.015;
-      const v = Math.sin(breathPhase) * 0.5 + 0.5;
+      const v = Math.sin(breathPhase) * 0.25 + 0.5;
       manager.trySetParameter('ParamBreath', v);
       breathRaf = requestAnimationFrame(breathTick);
     };
@@ -149,15 +140,9 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
         manager.trySetParameter('ParamEyeROpen', 1);
       }, 120 + Math.random() * 80);
     }, 2500 + Math.random() * 2000);
-    const expressionInterval = window.setInterval(() => {
-      const id = EXPRESSION_PARAMS[Math.floor(Math.random() * EXPRESSION_PARAMS.length)];
-      if (!manager.trySetParameter(id, 1)) return;
-      setTimeout(() => manager.trySetParameter(id, 0), 2000 + Math.random() * 1500);
-    }, 12000 + Math.random() * 13000);
     return () => {
       cancelAnimationFrame(breathRaf);
       window.clearInterval(blinkInterval);
-      window.clearInterval(expressionInterval);
     };
   }, [loaded, usingDefault, state]);
 

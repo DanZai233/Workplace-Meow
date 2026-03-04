@@ -9,7 +9,7 @@ import { useTypingAnimation } from './hooks/useMouseTracking';
 import { useGlobalMouseFollow } from './hooks/useMouseTracking';
 import { PET_DISPLAY_WIDTH, PET_DISPLAY_HEIGHT } from './utils/live2d-manager';
 import { AIService, AIConfig } from './lib/ai-providers';
-import { Send, Menu, X, User, Sparkles, Briefcase, Settings, MessageSquare, MoreVertical, GripVertical, Power } from 'lucide-react';
+import { Send, Menu, X, User, Sparkles, Briefcase, Settings, MessageSquare, MoreVertical, GripVertical, Power, Terminal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 
@@ -48,9 +48,9 @@ export default function App() {
 
   useEffect(() => {
     const w = PET_DISPLAY_WIDTH + 40;
-    const h = PET_DISPLAY_HEIGHT + 60;
+    const h = showChat ? PET_DISPLAY_HEIGHT + 60 + 220 : PET_DISPLAY_HEIGHT + 60;
     invoke('set_main_window_size', { width: w, height: h }).catch(() => {});
-  }, []);
+  }, [showChat]);
 
   // Load settings on mount and when settings window saves
   useEffect(() => {
@@ -211,10 +211,13 @@ export default function App() {
     }
   };
 
+  const CHAT_TOP_HEIGHT = 220;
+
   return (
-    <div className="h-screen font-sans overflow-hidden relative rounded-2xl" style={{ background: 'transparent' }}>
+    <div className="h-screen font-sans overflow-hidden relative rounded-2xl" style={{ background: 'transparent', paddingTop: showChat ? CHAT_TOP_HEIGHT : 0 }}>
       <div
         className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl ${dragEnabled ? 'cursor-move' : ''}`}
+        style={showChat ? { top: CHAT_TOP_HEIGHT, left: 0, right: 0, bottom: 0 } : undefined}
         onMouseDown={handleDragStart}
       >
         <div
@@ -231,7 +234,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* 聊天框：悬浮在窗口上方，完整展示 */}
+      {/* 聊天框：悬浮在顶部区域，完全在角色头顶不挡脑袋 */}
       <AnimatePresence>
         {showChat && (
           <motion.div
@@ -239,11 +242,11 @@ export default function App() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }}
             className="absolute left-1/2 top-2 -translate-x-1/2 z-[100] pointer-events-auto shadow-2xl rounded-2xl border border-slate-200 overflow-hidden"
-            style={{ width: Math.min(PET_DISPLAY_WIDTH + 40, 360), maxHeight: '85vh' }}
+            style={{ width: Math.min(PET_DISPLAY_WIDTH + 40, 360), maxHeight: CHAT_TOP_HEIGHT - 16 }}
             onClick={e => e.stopPropagation()}
             onMouseDown={e => e.stopPropagation()}
           >
-              <div className="bg-white rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight: '85vh' }}>
+              <div className="bg-white rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight: CHAT_TOP_HEIGHT - 16 }}>
                 <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{activePersona.icon}</span>
@@ -380,6 +383,13 @@ export default function App() {
               >
                 <GripVertical className="w-4 h-4 text-slate-500" />
                 {dragEnabled ? '锁定位置' : '解锁拖动'}
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); invoke('open_devtools', { label: 'main' }).catch(() => {}); }}
+                className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
+              >
+                <Terminal className="w-4 h-4 text-slate-500" />
+                打开控制台
               </button>
               <button
                 onClick={() => { setMenuOpen(false); invoke('exit_app'); }}

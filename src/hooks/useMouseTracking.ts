@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import Live2DManager from '../utils/live2d-manager';
@@ -77,30 +77,52 @@ export function useGlobalMouseFollow() {
 
 export function useTypingAnimation() {
   const manager = Live2DManager.getInstance();
+  const keyPressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const keyReleaseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const startTyping = useCallback(() => {
     try {
+      const tick = () => {
+        manager.trySetParameter?.('CatParamLeftHandDown', 1);
+        const releaseMs = 50 + Math.random() * 80;
+        keyReleaseRef.current = window.setTimeout(() => {
+          manager.trySetParameter?.('CatParamLeftHandDown', 0);
+          keyReleaseRef.current = null;
+        }, releaseMs);
+      };
+      tick();
+      const intervalMs = 100 + Math.random() * 150;
+      keyPressTimerRef.current = window.setInterval(tick, intervalMs);
+
       const modelInfo = manager.getModelInfo?.();
-      if (!modelInfo) return;
-      const name = (m: string) => m.toLowerCase();
-      const speakingMotion = modelInfo.motions.find(m =>
-        name(m).includes('talk') || name(m).includes('speak') || name(m).includes('mouth') ||
-        name(m).includes('type') || name(m).includes('tap_body') || name(m).includes('tap')
-      );
-      if (speakingMotion) {
-        manager.playMotion(speakingMotion, 0);
-      } else {
-        manager.setParameterValue('ParamMouthOpen', 0.8);
+      if (modelInfo) {
+        const name = (m: string) => m.toLowerCase();
+        const speakingMotion = modelInfo.motions.find(m =>
+          name(m).includes('talk') || name(m).includes('speak') || name(m).includes('mouth') ||
+          name(m).includes('type') || name(m).includes('tap_body') || name(m).includes('tap')
+        );
+        if (speakingMotion) {
+          manager.playMotion(speakingMotion, 0);
+        } else {
+          manager.setParameterValue('ParamMouthOpen', 0.8);
+        }
       }
     } catch (_) {}
   }, []);
 
   const stopTyping = useCallback(() => {
     try {
+      if (keyPressTimerRef.current) {
+        clearInterval(keyPressTimerRef.current);
+        keyPressTimerRef.current = null;
+      }
+      if (keyReleaseRef.current) {
+        clearTimeout(keyReleaseRef.current);
+        keyReleaseRef.current = null;
+      }
+      manager.trySetParameter?.('CatParamLeftHandDown', 0);
       manager.setParameterValue('ParamMouthOpen', 0);
-    } catch (error) {
-      console.error('Failed to stop typing animation:', error);
-    }
+    } catch (_) {}
   }, []);
 
   return { startTyping, stopTyping };
