@@ -59,6 +59,13 @@ npm run tauri:dev
 npm run tauri:build
 ```
 
+### 调试与排错（Windows 上界面看不见时）
+
+- **自动打开 DevTools**：运行前设置环境变量后启动，会自动弹出控制台窗口，可查看 Console / 报错。
+  - 命令行：`set WORKPLACE_MEOW_DEBUG=1 && 职场桌宠.exe`（或在“属性 → 快捷方式”里加 `WORKPLACE_MEOW_DEBUG=1` 再运行）
+  - PowerShell：`$env:WORKPLACE_MEOW_DEBUG="1"; .\职场桌宠.exe`
+- **应用内调试栏**：主窗口顶部会显示一条深色调试栏，无报错时也会显示，便于确认页面已加载；点击「打开控制台 (DevTools)」可打开开发者工具。若有错误会显示条数，点击展开可看具体内容。
+
 ### 在 Linux 上打包 Windows 安装包（交叉编译）
 
 Tauri 支持在 Linux/macOS 上通过 **NSIS** 打出 Windows 安装包（仅生成 `.exe` 安装程序，无法生成 `.msi`）。若需稳定构建，建议使用 Windows 本机或 GitHub Actions。

@@ -7,11 +7,15 @@ import { Application, Ticker } from 'pixi.js'
 
 Live2DModel.registerTicker(Ticker)
 
+const DEFAULT_WIDTH = 400
+const DEFAULT_HEIGHT = 300
+
 class Live2DManager {
   private static instance: Live2DManager
   private app: Application | null = null
   public model: Live2DModel | null = null
   private canvas: HTMLCanvasElement | null = null
+  private container: HTMLElement | null = null
 
   private constructor() {}
 
@@ -22,32 +26,41 @@ class Live2DManager {
     return Live2DManager.instance;
   }
 
-  private initApp() {
+  /** 由 Pixi 自己创建 canvas 并挂到 container，避免传入 React 的 canvas 导致 WebGL checkMaxIfStatementsInShader 报 0 出错（尤其 Windows） */
+  private createApp(container: HTMLElement, width: number, height: number) {
     if (this.app) return
-
-    if (!this.canvas) {
-      throw new Error('Canvas not initialized');
-    }
-
+    // 使用不透明背景并每帧清除，避免移动时底层重影（透明 + 未清除会残留上一帧）
     this.app = new Application({
-      view: this.canvas,
-      width: this.canvas.width,
-      height: this.canvas.height,
-      backgroundAlpha: 0,
-      resolution: window.devicePixelRatio || 1,
+      width,
+      height,
+      backgroundColor: 0xf1f5f9,
+      backgroundAlpha: 1,
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
       autoDensity: true,
     })
+    this.canvas = this.app.view as HTMLCanvasElement
+    this.container = container
+    container.innerHTML = ''
+    container.appendChild(this.canvas)
   }
 
-  public async initialize(canvas: HTMLCanvasElement, modelPath: string): Promise<void> {
-    this.canvas = canvas;
-    this.initApp();
-    
+  /** 统一为用 / 的路径，避免 Windows 反斜杠导致拼接错误 */
+  private normalizePath(p: string): string {
+    return p.replace(/\\/g, '/');
+  }
+
+  public async initialize(container: HTMLElement, modelPath: string, width = DEFAULT_WIDTH, height = DEFAULT_HEIGHT): Promise<void> {
+    const { loadLive2DScripts } = await import('./load-live2d-scripts');
+    await loadLive2DScripts();
+
     if (this.model) {
       this.destroy();
     }
 
-    const files = await readDir(modelPath);
+    this.createApp(container, width, height)
+
+    const basePath = this.normalizePath(modelPath);
+    const files = await readDir(basePath);
 
     const modelFile = files.find(file => file.name.endsWith('.model3.json'));
 
@@ -55,7 +68,7 @@ class Live2DManager {
       throw new Error('未找到模型主配置文件 (.model3.json)，请确认模型文件是否完整。');
     }
 
-    const fullPath = modelPath + '/' + modelFile.name;
+    const fullPath = basePath + '/' + modelFile.name;
     const modelJSON = JSON.parse(await readTextFile(fullPath));
 
     const modelSettings = new Cubism4ModelSettings({
@@ -64,7 +77,7 @@ class Live2DManager {
     });
 
     modelSettings.replaceFiles((file) => {
-      return convertFileSrc(modelPath + '/' + file);
+      return convertFileSrc(basePath + '/' + file);
     });
 
     this.model = await Live2DModel.from(modelSettings);
@@ -82,12 +95,14 @@ class Live2DManager {
     const { width, height } = this.model;
     const scaleX = this.canvas.width / width;
     const scaleY = this.canvas.height / height;
-    const scale = Math.min(scaleX, scaleY) * 0.9;
-
+    // 留边距确保完整显示，避免头顶/边缘被裁切
+    const scale = Math.min(scaleX, scaleY) * 0.88;
     this.model.scale.set(scale);
+
+    // 底部对齐：锚点设脚底中心，放在画布底部，形象完整且不会裁切
+    this.model.anchor.set(0.5, 1);
     this.model.x = this.canvas.width / 2;
     this.model.y = this.canvas.height;
-    this.model.anchor.set(0.5, 1);
   }
 
   public playMotion(group: string, index: number) {
@@ -135,18 +150,29 @@ class Live2DManager {
   }
 
   public destroy(): void {
-    if (this.model) {
-      this.model.destroy();
-      this.model = null;
-    }
+    try {
+      if (this.model) {
+        try {
+          this.model.destroy();
+        } catch (_) {}
+        this.model = null;
+      }
+    } catch (_) {}
 
-    if (this.app) {
-      this.app.destroy(true);
-      this.app = null;
-    }
-
+    try {
+      if (this.app) {
+        try {
+          this.app.destroy(true);
+        } catch (_) {}
+        this.app = null;
+      }
+    } catch (_) {}
+    this.container = null;
     this.canvas = null;
-    window.removeEventListener('resize', () => this.resizeModel());
+
+    try {
+      window.removeEventListener('resize', () => this.resizeModel());
+    } catch (_) {}
   }
 }
 

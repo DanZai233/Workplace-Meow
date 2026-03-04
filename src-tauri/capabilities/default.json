@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口与设置窗口：对话框、资源目录与用户选择目录的读写",
+  "windows": ["main", "settings", "chat"],
+  "permissions": [
+    "core:default",
+    "core:event:allow-emit",
+    "core:event:allow-listen",
+    "dialog:default",
+    "fs:default",
+    "fs:allow-resource-read-recursive",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$RESOURCE/**" },
+        { "path": "$HOME/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$DOCUMENT/**" }
+      ]
+    }
+  ]
+}

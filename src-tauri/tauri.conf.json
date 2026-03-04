@@ -18,7 +18,7 @@
         "url": "index.html",
         "shadow": false,
         "alwaysOnTop": true,
-        "transparent": true,
+        "transparent": false,
         "decorations": false,
         "acceptFirstMouse": true,
         "skipTaskbar": true,

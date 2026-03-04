@@ -1,49 +1,73 @@
-import { useEffect, useRef, useState } from 'react';
+import { Component, type ReactNode, useEffect, useRef, useState } from 'react';
+import { resolveResource } from '@tauri-apps/api/path';
 import { PetState } from '../constants';
-import Live2DManager from '../utils/live2d-manager';
+import { loadLive2DScripts } from '../utils/load-live2d-scripts';
 
 interface Live2DPetProps {
   state: PetState;
+  /** 模型路径或内置名称（如 elsia、standard），组件内会解析为完整路径 */
   modelPath?: string;
   onDoubleClick?: () => void;
 }
 
+async function resolveModelPath(raw: string): Promise<string> {
+  const t = raw?.trim();
+  if (!t) return t;
+  if (t.includes('/') || t.includes('\\')) return t.replace(/\\/g, '/');
+  const base = await resolveResource('assets/models');
+  return `${base}/${t}`;
+}
+
 export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState(false);
-  const [usingDefault, setUsingDefault] = useState(!modelPath);
-  const managerRef = useRef<Live2DManager | null>(null);
+  const [usingDefault, setUsingDefault] = useState(!modelPath?.trim());
+  const managerRef = useRef<{ destroy: () => void; getModelInfo: () => { motions: string[] } | null; playMotion: (g: string, i: number) => unknown } | null>(null);
 
   useEffect(() => {
-    if (usingDefault) {
+    if (!modelPath?.trim()) {
+      setUsingDefault(true);
       setLoaded(true);
       return;
     }
 
-    const canvas = canvasRef.current;
-    if (!canvas || !modelPath) return;
+    const container = containerRef.current;
+    if (!container) return;
 
-    const loadLive2D = async () => {
+    setLoaded(false);
+    setUsingDefault(false);
+    let cancelled = false;
+    const run = async () => {
       try {
+        const resolved = await resolveModelPath(modelPath!);
+        if (cancelled) return;
+        await loadLive2DScripts();
+        if (cancelled) return;
+        const { default: Live2DManager } = await import('../utils/live2d-manager');
+        if (cancelled) return;
         const manager = Live2DManager.getInstance();
         managerRef.current = manager;
-        
-        await manager.initialize(canvas, modelPath);
+        await manager.initialize(container, resolved, 400, 300);
+        if (cancelled) return;
+        setUsingDefault(false);
         setLoaded(true);
       } catch (error) {
-        console.error('Failed to load Live2D model:', error);
+        if (cancelled) return;
+        console.error('Live2D 加载失败，已回退为默认桌宠:', error);
         setUsingDefault(true);
         setLoaded(true);
       }
     };
 
-    loadLive2D();
-
+    run();
     return () => {
-      managerRef.current?.destroy();
+      cancelled = true;
+      try {
+        managerRef.current?.destroy();
+      } catch (_) {}
       managerRef.current = null;
     };
-  }, [modelPath, usingDefault]);
+  }, [modelPath]);
 
   useEffect(() => {
     if (!loaded || usingDefault || !managerRef.current) return;
@@ -94,17 +118,18 @@ export function Live2DPet({ state, modelPath, onDoubleClick }: Live2DPetProps) {
   }
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={400}
-      height={300}
-      onDoubleClick={onDoubleClick}
+    <div
+      ref={containerRef}
+      className="w-[400px] h-[300px] bg-slate-100 rounded-lg overflow-hidden"
       style={{ cursor: 'pointer' }}
+      onDoubleClick={onDoubleClick}
+      role="img"
+      aria-label="Live2D 桌宠"
     />
   );
 }
 
-function DefaultPet({ state, onDoubleClick }: { state: PetState; onDoubleClick?: () => void }) {
+export function DefaultPet({ state, onDoubleClick }: { state: PetState; onDoubleClick?: () => void }) {
   return (
     <svg
       width="400"
@@ -185,5 +210,37 @@ function DefaultPet({ state, onDoubleClick }: { state: PetState; onDoubleClick?:
         )}
       </g>
     </svg>
+  );
+}
+
+/** 捕获 Live2D 子树内错误，避免崩溃拖垮整块面板；出错时显示默认桌宠 */
+class Live2DErrorBoundary extends Component<
+  { children: ReactNode; state: PetState; onDoubleClick?: () => void },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error('Live2D 错误边界捕获:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <DefaultPet state={this.props.state} onDoubleClick={this.props.onDoubleClick} />;
+    }
+    return this.props.children;
+  }
+}
+
+/** 带错误边界的 Live2D 桌宠，推荐在 App 中使用 */
+export function Live2DPetWithBoundary(props: Live2DPetProps) {
+  return (
+    <Live2DErrorBoundary state={props.state} onDoubleClick={props.onDoubleClick}>
+      <Live2DPet {...props} />
+    </Live2DErrorBoundary>
   );
 }

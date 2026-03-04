@@ -36,8 +36,8 @@ export function useModel() {
       const presetModels: Live2DModel[] = [
         {
           id: 'elysia',
-          name: '爱莉希雅 · 标准模式',
-          path: `${modelsPath}/爱莉希雅 · 标准模式`,
+          name: '爱莉希雅',
+          path: `${modelsPath}/elsia`,
           isPreset: true
         },
         {
@@ -70,23 +70,50 @@ export function useModel() {
     }
   };
 
-  const loadModel = async (model: Live2DModel, canvas: HTMLCanvasElement) => {
+  /** 解析模型路径：仅名称（如 elsia）转为 resource 下路径，否则原样返回（并统一分隔符） */
+  const resolveModelPath = async (rawPath: string): Promise<string> => {
+    const trimmed = rawPath?.trim();
+    if (!trimmed) return trimmed;
+    if (trimmed.includes('/') || trimmed.includes('\\')) {
+      return trimmed.replace(/\\/g, '/');
+    }
+    const base = await resolveResource('assets/models');
+    return `${base}/${trimmed}`;
+  };
+
+  const loadModel = async (model: Live2DModel, container: HTMLElement) => {
+    if (!model.path) return;
     try {
       setLoading(true);
-      
       const manager = Live2DManager.getInstance();
       managerRef.current = manager;
-      
-      await manager.initialize(canvas, model.path);
-      
+      const path = await resolveModelPath(model.path);
+      await manager.initialize(container, path, 400, 300);
       setCurrentModel(model);
       localStorage.setItem('currentModelId', model.id);
-      
       const { LogicalSize } = await import('@tauri-apps/api/dpi');
       await appWindow.setSize(new LogicalSize({ width: 400, height: 300 }));
-      
     } catch (error) {
       console.error('Failed to load model:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** 用任意路径/名称加载模型（用于设置页预览与主窗口）；传入容器，由 Pixi 自行创建 canvas 避免 WebGL 报错 */
+  const loadModelByPath = async (rawPath: string, container: HTMLElement) => {
+    if (!rawPath?.trim()) return;
+    try {
+      setLoading(true);
+      const manager = Live2DManager.getInstance();
+      managerRef.current = manager;
+      const path = await resolveModelPath(rawPath);
+      await manager.initialize(container, path, 400, 300);
+      const customModel = { id: 'custom', name: '自定义', path: rawPath.trim(), isPreset: false };
+      setCurrentModel(customModel);
+    } catch (error) {
+      console.error('Failed to load model by path:', error);
       throw error;
     } finally {
       setLoading(false);
@@ -120,6 +147,8 @@ export function useModel() {
     currentModel,
     loading,
     loadModel,
+    loadModelByPath,
+    resolveModelPath,
     playMotion,
     setParameterValue,
     setCurrentModel,

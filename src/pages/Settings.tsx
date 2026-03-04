@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { emit } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { AI_PROVIDERS, AIConfig } from '../lib/ai-providers';
 import { LIVE2D_MODELS, PERSONAS, Persona } from '../constants';
@@ -30,13 +31,27 @@ export default function SettingsPage() {
   });
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
  
   const selectedProvider = AI_PROVIDERS.find(p => p.id === config.provider);
-  const { models: live2dModels, currentModel, loading: modelLoading, loadModel } = useModel();
+  const { models: live2dModels, currentModel, loading: modelLoading, loadModel, loadModelByPath } = useModel();
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     loadSettings();
+  }, []);
+
+  // 设置页打开后自动加载预览（已保存路径或默认 elsia），避免预览区空白
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (!previewContainerRef.current) return;
+      const path = (customModelPath && String(customModelPath).trim()) || 'elsia';
+      setPreviewError(null);
+      loadModelByPath(path, previewContainerRef.current).catch((e) => {
+        setPreviewError(e instanceof Error ? e.message : '预览加载失败');
+      });
+    }, 500);
+    return () => clearTimeout(t);
   }, []);
 
   const loadSettings = async () => {
@@ -49,8 +64,10 @@ export default function SettingsPage() {
       if (settings.api_key) {
         setConfig(prev => ({ ...prev, apiKey: settings.api_key }));
       }
-      if (settings.model_name) {
-        setConfig(prev => ({ ...prev, model: settings.model_name }));
+      if (settings.model_name != null && String(settings.model_name).trim()) {
+        setConfig(prev => ({ ...prev, model: String(settings.model_name).trim() }));
+      } else if (settings.ai_provider === 'volcengine') {
+        setConfig(prev => ({ ...prev, model: 'doubao-seed-1-8-251228' }));
       }
       if (settings.model_path) {
         setCustomModelPath(settings.model_path);
@@ -70,6 +87,7 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setSaving(true);
+    setPreviewError(null);
     try {
       await invoke('save_settings', {
         settings: {
@@ -85,6 +103,7 @@ export default function SettingsPage() {
       });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
+      await emit('settings-saved');
     } catch (error) {
       console.error('Failed to save settings:', error);
     } finally {
@@ -92,22 +111,28 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSelectModelPath = async () => {
+  const handlePreviewPath = async () => {
+    if (!customModelPath.trim() || !previewContainerRef.current) return;
+    setPreviewError(null);
+    try {
+      await loadModelByPath(customModelPath.trim(), previewContainerRef.current);
+    } catch (e) {
+      setPreviewError(e instanceof Error ? e.message : '加载失败');
+    }
+  };
+
+  const handleSelectModelFolder = async () => {
     try {
       const selected = await open({
-        directory: false,
+        directory: true,
         multiple: false,
-        filters: [{
-          name: 'Live2D Model',
-          extensions: ['moc3', 'model3.json']
-        }]
       });
       
       if (selected && typeof selected === 'string') {
         setCustomModelPath(selected);
       }
     } catch (error) {
-      console.error('Failed to select model path:', error);
+      console.error('Failed to select model folder:', error);
     }
   };
 
@@ -138,7 +163,11 @@ export default function SettingsPage() {
                     {AI_PROVIDERS.map(provider => (
                       <button
                         key={provider.id}
-                        onClick={() => setConfig(prev => ({ ...prev, provider: provider.id }))}
+                        onClick={() => setConfig(prev => ({
+                          ...prev,
+                          provider: provider.id,
+                          ...(provider.id === 'volcengine' && prev.provider !== 'volcengine' ? { model: 'doubao-seed-1-8-251228' } : {}),
+                        }))}
                         className={`p-4 rounded-xl border-2 transition-all ${
                           config.provider === provider.id
                             ? 'border-indigo-600 bg-indigo-50'
@@ -157,17 +186,18 @@ export default function SettingsPage() {
                   <>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">
-                        选择模型
+                        模型名称
                       </label>
-                      <select
+                      <p className="text-xs text-slate-500 mb-2">
+                        输入当前提供商的模型名或 endpoint 模型 ID（如火山引擎：doubao-seed-1-8-251228）。
+                      </p>
+                      <input
+                        type="text"
                         value={config.model}
                         onChange={(e) => setConfig(prev => ({ ...prev, model: e.target.value }))}
+                        placeholder={config.provider === 'volcengine' ? 'doubao-seed-1-8-251228' : '输入模型名'}
                         className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-50 transition-all"
-                      >
-                        {selectedProvider.models.map(model => (
-                          <option key={model} value={model}>{model}</option>
-                        ))}
-                      </select>
+                      />
                     </div>
 
                     <div>
@@ -203,8 +233,9 @@ export default function SettingsPage() {
                        <button
                          key={model.id}
                          onClick={() => {
-                           if (canvasRef.current) {
-                             loadModel(model, canvasRef.current);
+                           if (model.path) setCustomModelPath(model.path);
+                           if (previewContainerRef.current) {
+                             loadModel(model, previewContainerRef.current);
                            }
                          }}
                          disabled={modelLoading}
@@ -231,38 +262,55 @@ export default function SettingsPage() {
                    <label className="block text-sm font-medium text-slate-700 mb-2">
                      模型预览
                    </label>
-                   <div className="bg-slate-100 rounded-xl p-4 flex items-center justify-center min-h-[200px]">
-                     {modelLoading ? (
-                       <div className="flex items-center gap-2 text-slate-500">
+                   <div className="bg-slate-100 rounded-xl p-4 flex items-center justify-center min-h-[200px] relative">
+                     {modelLoading && (
+                       <div className="absolute inset-0 flex items-center justify-center gap-2 text-slate-500 bg-slate-100/80 rounded-xl z-10">
                          <Loader2 className="w-5 h-5 animate-spin" />
                          <span>加载模型中...</span>
                        </div>
-                     ) : (
-                       <canvas
-                         ref={canvasRef}
-                         width={400}
-                         height={300}
-                         className="rounded-lg"
-                       />
                      )}
+                     <div
+                       ref={previewContainerRef}
+                       className="w-[400px] h-[300px] rounded-lg overflow-hidden bg-white/50"
+                     />
                    </div>
                  </div>
  
                  <div>
                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                     添加自定义模型
+                     模型路径或名称
                    </label>
-                   <button
-                     onClick={handleSelectModelPath}
-                     className="flex items-center gap-2 w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-                   >
-                     <FolderOpen className="w-5 h-5 text-slate-600" />
-                     <span>选择 Live2D 模型文件夹</span>
-                   </button>
-                   {customModelPath && (
-                     <div className="mt-2 text-sm text-slate-600">
-                       已选择：{customModelPath}
-                     </div>
+                   <p className="text-xs text-slate-500 mb-2">
+                     可输入内置模型名称（如 elsia、standard）或完整路径；也可点击下方按钮选择本地文件夹。
+                   </p>
+                   <div className="flex gap-2">
+                     <input
+                       type="text"
+                       value={customModelPath}
+                       onChange={(e) => setCustomModelPath(e.target.value)}
+                       placeholder="例如：elsia 或 D:\models\my-model"
+                       className="flex-1 px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-50 transition-all"
+                     />
+                     <button
+                       type="button"
+                       onClick={handleSelectModelFolder}
+                       className="flex items-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors shrink-0"
+                     >
+                       <FolderOpen className="w-5 h-5 text-slate-600" />
+                       选择文件夹
+                     </button>
+                     <button
+                       type="button"
+                       onClick={handlePreviewPath}
+                       disabled={!customModelPath.trim() || modelLoading}
+                       className="flex items-center gap-2 px-4 py-3 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg transition-colors shrink-0 disabled:opacity-50"
+                     >
+                       {modelLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                       预览
+                     </button>
+                   </div>
+                   {previewError && (
+                     <p className="mt-2 text-sm text-red-600">{previewError}</p>
                    )}
                  </div>
                </div>

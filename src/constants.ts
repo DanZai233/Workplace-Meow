@@ -78,8 +78,8 @@ export type Message = {
 export const LIVE2D_MODELS = [
   {
     id: 'elysia',
-    name: '爱莉希雅 · 标准模式',
-    description: '默认 Live2D 模型',
+    name: '爱莉希雅',
+    description: '默认 Live2D 模型（路径：assets/models/elsia）',
     category: 'anime',
   },
   {

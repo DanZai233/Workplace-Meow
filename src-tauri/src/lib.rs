@@ -1,4 +1,4 @@
-use tauri::Manager;
+use tauri::{Manager, RunEvent, WindowEvent};
 use std::fs;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,13 @@ pub fn run() {
             // 主窗口默认不穿透，便于点击设置/聊天按钮；前端在鼠标移入桌宠区域时再开启穿透
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_ignore_cursor_events(false);
+                // 确保主窗口显示并置前，避免在 Windows 上“界面没了但进程还在”
+                let _ = window.show();
+                let _ = window.set_focus();
+                // 调试：设置环境变量 WORKPLACE_MEOW_DEBUG=1 时自动打开 DevTools（Windows 上可先 set WORKPLACE_MEOW_DEBUG=1 再运行 exe）
+                if std::env::var("WORKPLACE_MEOW_DEBUG").map(|v| v == "1" || v.eq_ignore_ascii_case("true")).unwrap_or(false) {
+                    let _ = window.open_devtools();
+                }
             }
 
             // Initialize settings file if not exists
@@ -54,16 +61,40 @@ pub fn run() {
             set_click_through,
             toggle_window,
             set_window_position,
-            capture_screenshot
+            get_window_position,
+            capture_screenshot,
+            open_devtools
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let RunEvent::WindowEvent { label, event, .. } = event {
+                if label == "main" {
+                    match event {
+                        WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed => {
+                            app_handle.exit(0);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
 }
 
 fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
-    let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
-    fs::create_dir_all(&app_data_dir).ok();
+    let app_data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
+        std::env::temp_dir().join("workplace-meow")
+    });
+    let _ = fs::create_dir_all(&app_data_dir);
     app_data_dir.join("settings.json")
+}
+
+#[tauri::command]
+fn open_devtools(app: tauri::AppHandle, label: Option<String>) -> Result<(), String> {
+    let label = label.as_deref().unwrap_or("main");
+    let window = app.get_webview_window(label).ok_or_else(|| format!("窗口 {} 不存在", label))?;
+    window.open_devtools();
+    Ok(())
 }
 
 #[tauri::command]
@@ -129,16 +160,46 @@ async fn set_click_through(window: tauri::WebviewWindow, enabled: bool) -> Resul
 
 #[tauri::command]
 async fn toggle_window(app: tauri::AppHandle, label: String, visible: bool) -> Result<(), String> {
-    if let Some(target_window) = app.get_webview_window(&label) {
-        if visible {
-            target_window.show().map_err(|e| e.to_string())?;
-            target_window.set_focus().map_err(|e| e.to_string())?;
-            Ok(())
-        } else {
-            target_window.hide().map_err(|e| e.to_string())
+    if visible {
+        let target = app.get_webview_window(&label);
+        if let Some(w) = target {
+            w.show().map_err(|e| e.to_string())?;
+            w.set_focus().map_err(|e| e.to_string())?;
+            return Ok(());
         }
+        // 窗口被关掉后不存在，按配置重新创建
+        let (url, title, width, height, decorations) = match label.as_str() {
+            "settings" => (
+                tauri::WebviewUrl::App("index.html#/settings".into()),
+                "设置",
+                920.0,
+                720.0,
+                true,
+            ),
+            "chat" => (
+                tauri::WebviewUrl::App("index.html#/chat".into()),
+                "聊天",
+                420.0,
+                620.0,
+                false,
+            ),
+            _ => return Err(format!("Unknown window label: {}", label)),
+        };
+        tauri::WebviewWindowBuilder::new(&app, &label, url)
+            .title(title)
+            .inner_size(width, height)
+            .visible(true)
+            .min_inner_size(width - 20., height - 20.)
+            .decorations(decorations)
+            .center()
+            .transparent(!decorations)
+            .build()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    } else if let Some(w) = app.get_webview_window(&label) {
+        w.hide().map_err(|e| e.to_string())
     } else {
-        Err(format!("Window {} not found", label))
+        Ok(())
     }
 }
 
@@ -146,6 +207,12 @@ async fn toggle_window(app: tauri::AppHandle, label: String, visible: bool) -> R
 async fn set_window_position(window: tauri::WebviewWindow, x: i32, y: i32) -> Result<(), String> {
     window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_window_position(window: tauri::WebviewWindow) -> Result<(i32, i32), String> {
+    let pos = window.outer_position().map_err(|e| e.to_string())?;
+    Ok((pos.x, pos.y))
 }
 
 #[tauri::command]
