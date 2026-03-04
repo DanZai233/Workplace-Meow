@@ -32,10 +32,11 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            // 主窗口默认不穿透，便于点击设置/聊天按钮；前端在鼠标移入桌宠区域时再开启穿透
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_ignore_cursor_events(true);
+                let _ = window.set_ignore_cursor_events(false);
             }
-            
+
             // Initialize settings file if not exists
             let settings_path = get_settings_path(app.handle());
             if !settings_path.exists() {
@@ -130,7 +131,9 @@ async fn set_click_through(window: tauri::WebviewWindow, enabled: bool) -> Resul
 async fn toggle_window(app: tauri::AppHandle, label: String, visible: bool) -> Result<(), String> {
     if let Some(target_window) = app.get_webview_window(&label) {
         if visible {
-            target_window.show().map_err(|e| e.to_string())
+            target_window.show().map_err(|e| e.to_string())?;
+            target_window.set_focus().map_err(|e| e.to_string())?;
+            Ok(())
         } else {
             target_window.hide().map_err(|e| e.to_string())
         }

@@ -77,6 +77,12 @@ export type Message = {
 
 export const LIVE2D_MODELS = [
   {
+    id: 'elysia',
+    name: '爱莉希雅 · 标准模式',
+    description: '默认 Live2D 模型',
+    category: 'anime',
+  },
+  {
     id: 'standard',
     name: '标准模型',
     description: 'BongoCat 标准模型，包含基础表情和动作',

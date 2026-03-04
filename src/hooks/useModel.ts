@@ -35,6 +35,12 @@ export function useModel() {
       
       const presetModels: Live2DModel[] = [
         {
+          id: 'elysia',
+          name: '爱莉希雅 · 标准模式',
+          path: `${modelsPath}/爱莉希雅 · 标准模式`,
+          isPreset: true
+        },
+        {
           id: 'standard',
           name: '标准模型',
           path: `${modelsPath}/standard`,
@@ -47,13 +53,16 @@ export function useModel() {
           isPreset: false
         },
       ];
-      
+
       setModels(presetModels);
-      
+
       const savedCurrentModelId = localStorage.getItem('currentModelId');
-      const savedModel = presetModels.find(m => m.id === savedCurrentModelId);
-      
-      setCurrentModel(savedModel || presetModels[0]);
+      // 旧版默认是 standard，统一改为爱莉希雅；无保存时也用爱莉希雅
+      const preferElysia = !savedCurrentModelId || savedCurrentModelId === 'standard';
+      const savedModel = preferElysia ? undefined : presetModels.find(m => m.id === savedCurrentModelId);
+      const modelToUse = savedModel || presetModels[0];
+      setCurrentModel(modelToUse);
+      if (preferElysia) localStorage.setItem('currentModelId', modelToUse.id);
     } catch (error) {
       console.error('Failed to init models:', error);
     } finally {

@@ -36,7 +36,7 @@
 - Rust (用于 Tauri)
 - 系统依赖：
   - macOS: Xcode Command Line Tools
-  - Linux: webkit2gtk
+  - Linux: webkit2gtk（Arch: `sudo pacman -S webkit2gtk-4.1 pkg-config`）
   - Windows: Microsoft C++ Build Tools
 
 ## 安装
@@ -58,6 +58,60 @@ npm run tauri:dev
 ```bash
 npm run tauri:build
 ```
+
+### 在 Linux 上打包 Windows 安装包（交叉编译）
+
+Tauri 支持在 Linux/macOS 上通过 **NSIS** 打出 Windows 安装包（仅生成 `.exe` 安装程序，无法生成 `.msi`）。若需稳定构建，建议使用 Windows 本机或 GitHub Actions。
+
+**1. 安装依赖**
+
+- **NSIS**（用于生成 Windows 安装程序）
+  - Arch: `yay -S nsis` 或 `paru -S nsis`（AUR）
+  - Ubuntu: `sudo apt install nsis`
+- **LLVM + LLD + Clang**（链接器与 C 编译；交叉编译时 cc-rs 会调用 clang-cl，脚本会用 clang 兼容）
+  - Arch: `sudo pacman -S llvm lld clang`
+  - Ubuntu: `sudo apt install lld llvm clang`
+- **Rust 与 rustup**（交叉编译必须用 rustup 管理的 Rust，不能用 `pacman -S rust`）
+  - 若未安装：`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+  - 添加 Windows 目标：`rustup target add x86_64-pc-windows-msvc`
+- **cargo-xwin**（自动拉取 Windows SDK，无需本机装 Visual Studio）
+  ```bash
+  cargo install --locked cargo-xwin
+  ```
+
+**2. 执行构建**
+
+推荐（自动加 PATH、添加 target、再构建）：
+
+```bash
+chmod +x scripts/build-windows.sh
+./scripts/build-windows.sh
+```
+
+或手动执行（需保证 `~/.cargo/bin` 在 PATH 中，且已执行过 `rustup target add x86_64-pc-windows-msvc`）。**在 Linux 上打 NSIS 包时**，Tauri 会调用 `makensis.exe`，而系统只有 `makensis`，因此**建议用上面的脚本**（脚本会生成一个名为 `makensis.exe` 的包装并注入 PATH）。若坚持手动执行，需先：
+
+```bash
+mkdir -p ~/.cache/workplace-meow-nsis-wrapper
+echo '#!/usr/bin/env sh' > ~/.cache/workplace-meow-nsis-wrapper/makensis.exe
+echo 'exec makensis "$@"' >> ~/.cache/workplace-meow-nsis-wrapper/makensis.exe
+chmod +x ~/.cache/workplace-meow-nsis-wrapper/makensis.exe
+export PATH="$HOME/.cache/workplace-meow-nsis-wrapper:$PATH"
+npm run tauri:build:win
+```
+
+或：
+
+```bash
+npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc
+```
+
+**3. 产物位置**
+
+- 安装包：`src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/` 下的 `*-setup.exe`
+
+首次构建时 `cargo-xwin` 会下载 Windows SDK，可能较慢。多项目可共享缓存：`export XWIN_CACHE_DIR=~/.cache/xwin`。
+
+若在 Linux 上执行 NSIS 打包时出现 `Can't detect any appindicator library` 并崩溃，可安装：`sudo pacman -S libappindicator`（Arch），然后重新运行打包脚本。若 **.exe 已成功生成**，也可直接使用 `src-tauri/target/x86_64-pc-windows-msvc/release/workplace-meow.exe`（需与 `dist/` 一起拷贝到 Windows 使用，或打 NSIS 安装包后分发）。
 
 ## 使用说明
 

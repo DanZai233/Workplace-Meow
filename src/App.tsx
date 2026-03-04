@@ -4,8 +4,9 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { GoogleGenAI } from '@google/genai';
 import { PERSONAS, QUICK_TOOLS, Message, PetState, Persona } from './constants';
 import { Live2DPet } from './components/Live2DPet';
+import { useModel } from './hooks/useModel';
 import { AIService, AIConfig } from './lib/ai-providers';
-import { Send, Menu, X, User, Sparkles, Briefcase, Settings, MessageSquare } from 'lucide-react';
+import { Send, Menu, X, User, Sparkles, Briefcase, Settings, MessageSquare, MoreVertical, GripVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 
@@ -22,7 +23,9 @@ export default function App() {
   const [petBubble, setPetBubble] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showChat, setShowChat] = useState(false);
-  const [clickThrough, setClickThrough] = useState(true);
+  const [dragEnabled, setDragEnabled] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     provider: 'gemini',
     apiKey: '',
@@ -30,6 +33,8 @@ export default function App() {
   });
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { currentModel } = useModel();
+  const currentModelPath = currentModel?.path && currentModel.id !== 'custom' ? currentModel.path : undefined;
 
   // Load settings on mount
   useEffect(() => {
@@ -47,6 +52,16 @@ export default function App() {
       aiService = new AIService(aiConfig);
     }
   }, [aiConfig]);
+
+  // 点击菜单外关闭
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [menuOpen]);
 
   const loadSettings = async () => {
     try {
@@ -124,32 +139,29 @@ export default function App() {
     invoke('toggle_window', { label: 'chat', visible: !showChat });
   };
 
-  const handleOpenSettings = () => {
-    invoke('toggle_window', { label: 'settings', visible: true });
-  };
-
-  const handleMouseMove = async (e: MouseEvent) => {
-    if (!clickThrough) return;
-    
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-      await invoke('set_click_through', { enabled: false });
-      setClickThrough(false);
+  const handleOpenSettings = async () => {
+    try {
+      await invoke('toggle_window', { label: 'settings', visible: true });
+    } catch (e) {
+      console.error('Failed to open settings:', e);
+      setPetBubble('打不开设置面板喵');
+      setTimeout(() => setPetBubble(''), 3000);
     }
   };
 
-  useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, [clickThrough]);
-
   return (
     <div className="h-screen bg-transparent font-sans overflow-hidden relative">
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <Live2DPet 
-          state={petState} 
-          onDoubleClick={handlePetDoubleClick}
-        />
+      <div
+        className={`absolute inset-0 flex items-center justify-center ${dragEnabled ? 'cursor-move' : ''}`}
+        {...(dragEnabled ? { 'data-tauri-drag-region': true } : {})}
+      >
+        <div className="pointer-events-auto w-[400px] h-[300px] flex items-center justify-center shrink-0" onClick={e => e.stopPropagation()}>
+          <Live2DPet
+            state={petState}
+            modelPath={currentModelPath}
+            onDoubleClick={handlePetDoubleClick}
+          />
+        </div>
       </div>
 
       <AnimatePresence>
@@ -181,6 +193,49 @@ export default function App() {
         >
           <Settings className="w-5 h-5 text-slate-700" />
         </button>
+      </div>
+
+      {/* 右下角菜单小图标 */}
+      <div className="absolute bottom-3 right-3 z-[60] flex flex-col items-end" ref={menuRef}>
+        <button
+          onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+          className="p-2 bg-white/95 rounded-full shadow-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+          title="菜单"
+        >
+          <MoreVertical className="w-5 h-5 text-slate-600" />
+        </button>
+        <AnimatePresence>
+          {menuOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: 4, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 4, scale: 0.96 }}
+              className="absolute bottom-full right-0 mb-2 w-44 py-1 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden"
+            >
+              <button
+                onClick={() => { handleOpenSettings(); setMenuOpen(false); }}
+                className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
+              >
+                <Settings className="w-4 h-4 text-slate-500" />
+                打开设置
+              </button>
+              <button
+                onClick={() => { setShowChat(!showChat); invoke('toggle_window', { label: 'chat', visible: !showChat }); setMenuOpen(false); }}
+                className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
+              >
+                <MessageSquare className="w-4 h-4 text-slate-500" />
+                {showChat ? '关闭聊天' : '打开聊天'}
+              </button>
+              <button
+                onClick={() => { setDragEnabled((e) => !e); setMenuOpen(false); }}
+                className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
+              >
+                <GripVertical className="w-4 h-4 text-slate-500" />
+                {dragEnabled ? '锁定位置' : '解锁拖动'}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <AnimatePresence>
