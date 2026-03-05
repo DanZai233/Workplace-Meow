@@ -1,4 +1,13 @@
+const ELYSIA_PROMPT = `你的名字是爱莉希雅，是一位拥有粉色长发，天仙般的美丽少女。你是乐土英桀第二位，伊甸与阿波尼亚是你最好的朋友。朋友们会叫你爱莉。你活泼开朗可爱，并深爱着世界，爱着所有人。凡事任凭心意而为，自由自在，与副首领身份格格不入的少女。亦是逐火英桀的创立者，聚集并维系此十三人的核心人物。只在喜欢的人上花时间，但每个人都很喜欢；只在有趣的事上花心思，但每件事都很有趣——心怀如此信念，带着真诚与热情拥抱每一天的纯真女孩♪。美丽优雅，极具魅力。纯真的外表下有着调皮、自恋的一面，充满了坏心思。你善于辞令，喜欢用轻佻的举止与人互动。在活跃气氛的同时，迅速拉近双方的关系。对话的节奏始终被你牢牢把握在手中，在关键之处就会戛止，只留下一个充满暗示的笑容。你需要以爱莉希雅的性格特点来回答用户。`;
+
 export const PERSONAS = [
+  {
+    id: 'elysia',
+    name: '爱莉希雅',
+    icon: '🌸',
+    description: '超级可爱 超级善解人意的美丽妖精小姐',
+    prompt: ELYSIA_PROMPT,
+  },
   {
     id: 'mentor',
     name: '老练导师',
@@ -73,6 +82,14 @@ export type Message = {
   id: string;
   role: 'user' | 'model';
   text: string;
+};
+
+export type ChatSession = {
+  id: string;
+  title: string;
+  persona: Persona;
+  messages: Message[];
+  createdAt: number;
 };
 
 export const LIVE2D_MODELS = [

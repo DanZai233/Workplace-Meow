@@ -15,14 +15,22 @@ struct Settings {
     model_path: String,
     #[serde(default = "default_assistant_name")]
     assistant_name: String,
+    #[serde(default = "default_assistant_icon")]
+    assistant_icon: String,
+    #[serde(default)]
+    assistant_description: String,
     #[serde(default = "default_assistant_prompt")]
     assistant_prompt: String,
+    #[serde(default = "default_selected_persona_id")]
+    selected_persona_id: String,
 }
 
 fn default_ai_provider() -> String { "gemini".to_string() }
 fn default_model_name() -> String { "gemini-2.5-pro".to_string() }
 fn default_assistant_name() -> String { "职场喵".to_string() }
+fn default_assistant_icon() -> String { "🐱".to_string() }
 fn default_assistant_prompt() -> String { "你是一个专业的职场助手，帮助用户解决工作中的问题。".to_string() }
+fn default_selected_persona_id() -> String { "elysia".to_string() }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -150,8 +158,17 @@ fn save_settings(app: tauri::AppHandle, settings: serde_json::Value) -> Result<(
         if let Some(val) = obj.get("assistant_name").and_then(|v| v.as_str()) {
             existing.assistant_name = val.to_string();
         }
+        if let Some(val) = obj.get("assistant_icon").and_then(|v| v.as_str()) {
+            existing.assistant_icon = val.to_string();
+        }
+        if let Some(val) = obj.get("assistant_description").and_then(|v| v.as_str()) {
+            existing.assistant_description = val.to_string();
+        }
         if let Some(val) = obj.get("assistant_prompt").and_then(|v| v.as_str()) {
             existing.assistant_prompt = val.to_string();
+        }
+        if let Some(val) = obj.get("selected_persona_id").and_then(|v| v.as_str()) {
+            existing.selected_persona_id = val.to_string();
         }
     }
     
@@ -187,8 +204,8 @@ async fn toggle_window(app: tauri::AppHandle, label: String, visible: bool) -> R
             "chat" => (
                 tauri::WebviewUrl::App("index.html#/chat".into()),
                 "聊天",
-                420.0,
-                620.0,
+                600.0,
+                640.0,
                 false,
             ),
             _ => return Err(format!("Unknown window label: {}", label)),

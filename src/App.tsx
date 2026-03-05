@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { listen, emit } from '@tauri-apps/api/event';
 import { GoogleGenAI } from '@google/genai';
-import { PERSONAS, QUICK_TOOLS, Message, PetState, Persona } from './constants';
+import { PERSONAS, Message, PetState, Persona, ChatSession } from './constants';
 import { Live2DPetWithBoundary } from './components/Live2DPet';
 import { useModel } from './hooks/useModel';
 import { useTypingAnimation } from './hooks/useMouseTracking';
@@ -15,9 +15,50 @@ import { motion, AnimatePresence } from 'motion/react';
 
 let aiService: AIService | null = null;
 
+const SESSIONS_STORAGE_KEY = 'workplace-meow-sessions';
+const ACTIVE_SESSION_KEY = 'workplace-meow-active-session-id';
+
+function loadSessionsFromStorage(): ChatSession[] {
+  try {
+    const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((s: unknown) => s && typeof s === 'object' && 'id' in s && 'messages' in s && 'persona' in s);
+  } catch {
+    return [];
+  }
+}
+
+function createEmptySession(persona: Persona): ChatSession {
+  return {
+    id: `s-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    title: '新会话',
+    persona,
+    messages: [],
+    createdAt: Date.now(),
+  };
+}
+
 export default function App() {
-  const [activePersona, setActivePersona] = useState<Persona>(PERSONAS[0]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [customAssistantFromSettings, setCustomAssistantFromSettings] = useState<{
+    name: string;
+    icon: string;
+    description: string;
+    prompt: string;
+  }>({ name: '', icon: '🐱', description: '', prompt: '' });
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    const stored = loadSessionsFromStorage();
+    if (stored.length > 0) return stored;
+    return [createEmptySession(PERSONAS[0])];
+  });
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    const id = localStorage.getItem(ACTIVE_SESSION_KEY);
+    const stored = loadSessionsFromStorage();
+    const list = stored.length > 0 ? stored : [createEmptySession(PERSONAS[0])];
+    if (id && list.some((s: ChatSession) => s.id === id)) return id;
+    return list[0]?.id ?? '';
+  });
   const [input, setInput] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [petState, setPetState] = useState<PetState>('idle');
@@ -37,7 +78,7 @@ export default function App() {
   const DRAG_THRESHOLD_PX = 5;
   const skipMouseFollowRef = useRef<() => boolean>(() => false);
   skipMouseFollowRef.current = () => isGenerating || isDraggingRef.current;
-  const chatStateRef = useRef<{ messages: Message[]; isGenerating: boolean; activePersona: Persona }>({ messages, isGenerating, activePersona });
+  const chatStateRef = useRef<Record<string, unknown>>({});
   const handleSendRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     provider: 'gemini',
@@ -62,12 +103,46 @@ export default function App() {
     invoke('set_main_window_size', { width: w, height: h }).catch(() => {});
   }, []);
 
-  chatStateRef.current = { messages, isGenerating, activePersona };
+  const activeSession = useMemo(
+    () => sessions.find(s => s.id === activeSessionId) ?? sessions[0] ?? null,
+    [sessions, activeSessionId]
+  );
 
-  // Sync chat state to separate chat window
   useEffect(() => {
-    emit('chat-state', chatStateRef.current);
-  }, [messages, isGenerating, activePersona]);
+    if (sessions.length > 0 && (!activeSessionId || !sessions.some(s => s.id === activeSessionId))) {
+      setActiveSessionId(sessions[0].id);
+    }
+  }, [sessions, activeSessionId]);
+
+  useEffect(() => {
+    if (activeSessionId) localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId);
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+    } catch (_) {}
+  }, [sessions]);
+
+  const personaOptions = useMemo(() => {
+    const custom = customAssistantFromSettings.name.trim()
+      ? ({ id: 'custom' as const, ...customAssistantFromSettings } as Persona)
+      : null;
+    return custom ? [...PERSONAS, custom] : [...PERSONAS];
+  }, [customAssistantFromSettings.name, customAssistantFromSettings.icon, customAssistantFromSettings.description, customAssistantFromSettings.prompt]);
+
+  const chatStatePayload = useMemo(() => ({
+    sessions,
+    activeSessionId,
+    activeSession,
+    personaOptions,
+    isGenerating,
+  }), [sessions, activeSessionId, activeSession, personaOptions, isGenerating]);
+  chatStateRef.current = chatStatePayload;
+
+  useEffect(() => {
+    emit('chat-state', chatStatePayload);
+  }, [chatStatePayload]);
 
   useEffect(() => {
     const unlistenReq = listen('request-chat-state', () => {
@@ -77,11 +152,38 @@ export default function App() {
       const text = e.payload?.text;
       if (typeof text === 'string' && text.trim()) handleSendRef.current(text.trim());
     });
+    const unlistenSetPersona = listen<Persona>('set-active-persona', (e) => {
+      const p = e.payload;
+      if (!p || p.id == null || !p.name || p.prompt == null || !activeSessionId) return;
+      setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, persona: p } : s));
+    });
+    const unlistenSetSession = listen<{ id: string }>('set-active-session', (e) => {
+      const id = e.payload?.id;
+      if (id && sessions.some(s => s.id === id)) setActiveSessionId(id);
+    });
+    const unlistenCreateSession = listen('create-session', () => {
+      const defaultPersona = PERSONAS[0];
+      const newSession = createEmptySession(defaultPersona);
+      setSessions(prev => [...prev, newSession]);
+      setActiveSessionId(newSession.id);
+    });
+    const unlistenDeleteSession = listen<{ id: string }>('delete-session', (e) => {
+      const id = e.payload?.id;
+      if (!id) return;
+      setSessions(prev => {
+        const next = prev.filter(s => s.id !== id);
+        return next.length === 0 ? [createEmptySession(PERSONAS[0])] : next;
+      });
+    });
     return () => {
       unlistenReq.then((fn) => fn());
       unlistenSend.then((fn) => fn());
+      unlistenSetPersona.then((fn) => fn());
+      unlistenSetSession.then((fn) => fn());
+      unlistenCreateSession.then((fn) => fn());
+      unlistenDeleteSession.then((fn) => fn());
     };
-  }, []);
+  }, [activeSessionId, sessions]);
 
   // Load settings on mount and when settings window saves
   useEffect(() => {
@@ -185,44 +287,54 @@ export default function App() {
       } else {
         setSettingsModelPath('elsia');
       }
+      const custom = {
+        name: String(settings.assistant_name ?? '').trim(),
+        icon: String(settings.assistant_icon ?? '🐱').trim() || '🐱',
+        description: String(settings.assistant_description ?? '').trim(),
+        prompt: String(settings.assistant_prompt ?? '').trim(),
+      };
+      setCustomAssistantFromSettings(prev => ({ ...prev, ...custom }));
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
   };
 
   const handleSend = async (text: string) => {
-    if (!text.trim() || isGenerating) return;
-    
+    if (!text.trim() || isGenerating || !activeSession) return;
+
+    const sid = activeSession.id;
     const userMsgId = Date.now().toString();
-    setMessages(prev => [...prev, { id: userMsgId, role: 'user', text }]);
+    const modelMsgId = (Date.now() + 1).toString();
+    const userMsg: Message = { id: userMsgId, role: 'user', text };
+    const modelPlaceholder: Message = { id: modelMsgId, role: 'model', text: '' };
+    setSessions(prev => prev.map(s => {
+      if (s.id !== sid) return s;
+      const nextMessages = [...s.messages, userMsg, modelPlaceholder];
+      const title = s.title === '新会话' && text.trim() ? text.trim().slice(0, 20) + (text.length > 20 ? '...' : '') : s.title;
+      return { ...s, messages: nextMessages, title };
+    }));
     setInput('');
     setPetState('typing');
     setPetBubble('');
     setIsGenerating(true);
     startTyping();
 
-    try {
-      const modelMsgId = (Date.now() + 1).toString();
-      setMessages(prev => [...prev, { id: modelMsgId, role: 'model', text: '' }]);
-      
-      let fullText = '';
-      const chatMessages = messages.map(msg => ({
-        role: msg.role,
-        content: msg.text
-      }));
-      chatMessages.push({ role: 'user', content: text });
+    const baseMessages = activeSession.messages.map(m => ({ role: m.role, content: m.text }));
+    const chatMessages = [...baseMessages, { role: 'user', content: text }];
 
+    try {
+      let fullText = '';
       if (aiService) {
-        for await (const chunk of aiService.sendMessageStream(chatMessages, activePersona.prompt)) {
+        for await (const chunk of aiService.sendMessageStream(chatMessages, activeSession.persona.prompt)) {
           fullText += chunk;
-          setMessages(prev => prev.map(msg =>
-            msg.id === modelMsgId ? { ...msg, text: fullText } : msg
-          ));
+          setSessions(prev => prev.map(s => {
+            if (s.id !== sid) return s;
+            return { ...s, messages: s.messages.map(m => m.id === modelMsgId ? { ...m, text: fullText } : m) };
+          }));
         }
       } else {
         throw new Error('AI service not initialized');
       }
-      
       setPetState('idle');
       setPetBubble('搞定喵！');
       setTimeout(() => setPetBubble(''), 3000);
@@ -230,7 +342,10 @@ export default function App() {
       console.error(error);
       setPetState('idle');
       setPetBubble('出错了喵...');
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: '抱歉，我遇到了一点问题，请稍后再试。' }]);
+      setSessions(prev => prev.map(s => {
+        if (s.id !== sid) return s;
+        return { ...s, messages: s.messages.map(m => m.id === modelMsgId ? { ...m, text: '抱歉，我遇到了一点问题，请稍后再试。' } : m) };
+      }));
     } finally {
       stopTyping();
       setIsGenerating(false);
