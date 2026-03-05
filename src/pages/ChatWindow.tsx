@@ -79,17 +79,19 @@ export default function ChatWindow() {
     <div className="h-screen flex bg-slate-50 font-sans">
       {/* 会话列表侧栏 */}
       <div
-        className={`shrink-0 flex flex-col border-r border-slate-200 bg-white transition-all overflow-hidden ${sessionListOpen ? 'w-52' : 'w-12'}`}
+        className={`shrink-0 flex flex-col border-r border-slate-200 bg-white transition-all overflow-hidden ${sessionListOpen ? 'w-52' : 'w-14'}`}
       >
-        <div className="p-2 flex items-center justify-between border-b border-slate-100 min-h-12">
-          {sessionListOpen && (
+        <div className={`p-2 border-b border-slate-100 flex items-center ${sessionListOpen ? 'min-h-12 justify-between' : 'flex-col gap-1 justify-start py-2'}`}>
+          {sessionListOpen ? (
             <span className="text-xs font-medium text-slate-500 px-2">会话</span>
+          ) : (
+            <span className="text-[10px] text-slate-400 mb-0.5">列表</span>
           )}
-          <div className="flex items-center gap-1">
+          <div className={`flex gap-1 ${sessionListOpen ? '' : 'flex-col'}`}>
             <button
               type="button"
               onClick={() => emit('create-session')}
-              className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
+              className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 shrink-0"
               title="新建会话"
             >
               <Plus className="w-4 h-4" />
@@ -97,8 +99,8 @@ export default function ChatWindow() {
             <button
               type="button"
               onClick={() => setSessionListOpen(o => !o)}
-              className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
-              title={sessionListOpen ? '收起' : '展开'}
+              className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 shrink-0"
+              title={sessionListOpen ? '收起会话列表' : '展开会话列表'}
             >
               <MessageSquare className="w-4 h-4" />
             </button>
@@ -133,7 +135,10 @@ export default function ChatWindow() {
 
       {/* 主聊天区 */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center justify-between shrink-0">
+        <div
+          data-tauri-drag-region
+          className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center justify-between shrink-0 cursor-move"
+        >
           <div className="flex items-center gap-2 flex-1 min-w-0" ref={personaMenuRef}>
             <button
               type="button"
