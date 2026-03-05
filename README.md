@@ -5,174 +5,209 @@
 
 ## 功能特性
 
-- **桌面宠物展示** - Live2D 模型或自定义 SVG 宠物，在桌面展示
-- **智能对话** - 支持多种 AI 提供商（Gemini、OpenAI、火山引擎、DeepSeek 等）
-- **助手自定义** - 可配置不同的职场助手人格
-- **透明窗口** - 支持点击穿透，不影响其他窗口操作
-- **对话气泡** - 实时显示 AI 回复的对话气泡
-- **设置管理** - 完整的设置界面，配置 AI、模型、宠物等
-- **模型管理** - 参考 BongoCat 的实现，支持 Live2D 模型加载、切换和预览
-- **剪贴板监听** - 自动检测复制内容，AI 生成高情商回复
-- **番茄钟提醒** - 连续工作2小时提醒喝水休息
-- **自动截屏分析** - AI 分析当前工作状态（支持所有AI提供商）
-- **情感表情** - AI 分析回复情感，Live2D 展示对应表情
-- **鼠标跟随** - Live2D 眼睛实时跟随鼠标移动
-- **打字动画** - AI 回复时显示打字动画
-- **主动关怀** - 定期发送鼓励和主动发起对话
-
-## AI 提供商支持
-
-- Google Gemini
-- OpenAI (GPT-4, GPT-3.5)
-- Anthropic Claude
-- 火山引擎 (Doubao)
-- DeepSeek
-- Moonshot AI (Kimi)
-- 智谱 AI (GLM)
+- **桌面宠物展示** - Live2D 模型或自定义 SVG 宠物
+- **智能对话** - 多会话、多角色，支持 Gemini / OpenAI / 火山引擎 / DeepSeek 等
+- **助手预设与个人设定** - 爱莉希雅等预设，可自定义系统提示词
+- **透明窗口** - 支持拖动、点击穿透
+- **打字与视线** - AI 回复时打字动画，眼睛跟随鼠标
+- **设置与模型** - 配置 AI、Live2D 模型路径、自定义助手
 
 ## 前置要求
 
-- Node.js 18+
-- Rust (用于 Tauri)
-- 系统依赖：
-  - macOS: Xcode Command Line Tools
-  - Linux: webkit2gtk（Arch: `sudo pacman -S webkit2gtk-4.1 pkg-config`）
-  - Windows: Microsoft C++ Build Tools
+| 环境     | 要求 |
+|----------|------|
+| Node.js  | 18+  |
+| Rust     | 用于 Tauri，建议通过 [rustup](https://rustup.rs/) 安装 |
+| 系统依赖 | **macOS**: Xcode Command Line Tools；**Linux**: `webkit2gtk-4.1`（Arch: `sudo pacman -S webkit2gtk-4.1 pkg-config`）；**Windows**: Microsoft C++ Build Tools |
 
-## 安装
+安装依赖后执行：
 
 ```bash
 npm install
 ```
 
-## 运行
+---
 
-### 开发模式
+## 一、启动教程
+
+### 1. 开发模式运行（推荐日常使用）
+
+在项目根目录执行：
 
 ```bash
 npm run tauri:dev
 ```
 
-### 构建应用
+会先编译前端（Vite）和 Tauri，然后启动桌面窗口，并开启前端热更新（改 React/TS 会自动刷新）。
+
+### 2. 运行已编译好的程序
+
+若已经用「编译教程」打过包，可直接运行可执行文件：
+
+- **Windows**：运行 `src-tauri/target/release/workplace-meow.exe`，或安装并运行 NSIS 生成的 `*-setup.exe`
+- **macOS**：运行 `src-tauri/target/release/bundle/macos/*.app`
+- **Linux**：运行 `src-tauri/target/release/workplace-meow` 或安装生成的 `.deb` / AppImage
+
+### 3. 调试：界面异常或想看报错时
+
+- **自动打开 DevTools**：启动前设置环境变量，再运行程序即可弹出开发者工具。
+  - Windows 命令行：`set WORKPLACE_MEOW_DEBUG=1 && 职场桌宠.exe`
+  - Windows PowerShell：`$env:WORKPLACE_MEOW_DEBUG="1"; .\职场桌宠.exe`
+  - Linux/macOS：`WORKPLACE_MEOW_DEBUG=1 ./workplace-meow`
+- **应用内打开控制台**：主窗口右下角「⋯」菜单 →「打开控制台」，即可打开当前窗口的 DevTools。
+
+---
+
+## 二、编译教程
+
+### 1. 本机编译（当前系统运行什么就编什么）
+
+在项目根目录执行：
 
 ```bash
 npm run tauri:build
 ```
 
-### 调试与排错（Windows 上界面看不见时）
+会先执行 `npm run build` 打包前端，再编译 Rust，最后在 `src-tauri/target/release/` 下生成可执行文件，并在 `src-tauri/target/release/bundle/` 下生成各平台安装包（如 Windows 的 NSIS、macOS 的 .app、Linux 的 .deb 等）。
 
-- **自动打开 DevTools**：运行前设置环境变量后启动，会自动弹出控制台窗口，可查看 Console / 报错。
-  - 命令行：`set WORKPLACE_MEOW_DEBUG=1 && 职场桌宠.exe`（或在“属性 → 快捷方式”里加 `WORKPLACE_MEOW_DEBUG=1` 再运行）
-  - PowerShell：`$env:WORKPLACE_MEOW_DEBUG="1"; .\职场桌宠.exe`
-- **应用内调试栏**：主窗口顶部会显示一条深色调试栏，无报错时也会显示，便于确认页面已加载；点击「打开控制台 (DevTools)」可打开开发者工具。若有错误会显示条数，点击展开可看具体内容。
+| 平台   | 可执行文件 / 安装包位置 |
+|--------|--------------------------|
+| Windows | `src-tauri/target/release/workplace-meow.exe`；安装包在 `.../bundle/nsis/*.exe` |
+| macOS   | `src-tauri/target/release/bundle/macos/` 下 .app |
+| Linux   | `src-tauri/target/release/workplace-meow`；安装包在 `.../bundle/deb/` 或 AppImage 等 |
 
-### 在 Linux 上打包 Windows 安装包（交叉编译）
+### 2. 在 Linux 上交叉编译 Windows 安装包
 
-Tauri 支持在 Linux/macOS 上通过 **NSIS** 打出 Windows 安装包（仅生成 `.exe` 安装程序，无法生成 `.msi`）。若需稳定构建，建议使用 Windows 本机或 GitHub Actions。
+在 **Linux** 上可打出 Windows 用的 `.exe` 安装包（NSIS），无需 Windows 本机。
 
-**1. 安装依赖**
+**（1）安装依赖**
 
-- **NSIS**（用于生成 Windows 安装程序）
-  - Arch: `yay -S nsis` 或 `paru -S nsis`（AUR）
-  - Ubuntu: `sudo apt install nsis`
-- **LLVM + LLD + Clang**（链接器与 C 编译；交叉编译时 cc-rs 会调用 clang-cl，脚本会用 clang 兼容）
-  - Arch: `sudo pacman -S llvm lld clang`
-  - Ubuntu: `sudo apt install lld llvm clang`
-- **Rust 与 rustup**（交叉编译必须用 rustup 管理的 Rust，不能用 `pacman -S rust`）
-  - 若未安装：`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-  - 添加 Windows 目标：`rustup target add x86_64-pc-windows-msvc`
-- **cargo-xwin**（自动拉取 Windows SDK，无需本机装 Visual Studio）
+- **Rust + Windows 目标**（必须用 rustup，不要用系统自带的 `rust`）  
+  - 安装 rustup：<https://rustup.rs/>  
+  - 添加目标：`rustup target add x86_64-pc-windows-msvc`
+- **cargo-xwin**（拉取 Windows SDK，无需装 Visual Studio）  
   ```bash
   cargo install --locked cargo-xwin
   ```
+  确保 `~/.cargo/bin` 在 `PATH` 中。
+- **NSIS**（打 Windows 安装包）  
+  - Arch: `yay -S nsis` 或 `paru -S nsis`  
+  - Ubuntu: `sudo apt install nsis`
+- **LLVM / Clang**（交叉编译时用）  
+  - Arch: `sudo pacman -S llvm lld clang`  
+  - Ubuntu: `sudo apt install lld llvm clang`
+- **libappindicator**（Arch 上打 NSIS 时若报错再装）  
+  - `sudo pacman -S libappindicator`
 
-**2. 执行构建**
+**（2）执行构建**
 
-推荐（自动加 PATH、添加 target、再构建）：
+推荐使用脚本（会自动处理 PATH、makensis 包装等）：
 
 ```bash
 chmod +x scripts/build-windows.sh
 ./scripts/build-windows.sh
 ```
 
-或手动执行（需保证 `~/.cargo/bin` 在 PATH 中，且已执行过 `rustup target add x86_64-pc-windows-msvc`）。**在 Linux 上打 NSIS 包时**，Tauri 会调用 `makensis.exe`，而系统只有 `makensis`，因此**建议用上面的脚本**（脚本会生成一个名为 `makensis.exe` 的包装并注入 PATH）。若坚持手动执行，需先：
+或手动（需已安装上述依赖，且 `~/.cargo/bin` 在 PATH 中）：
 
 ```bash
+# 若 Linux 上只有 makensis 没有 makensis.exe，先做包装再构建
 mkdir -p ~/.cache/workplace-meow-nsis-wrapper
-echo '#!/usr/bin/env sh' > ~/.cache/workplace-meow-nsis-wrapper/makensis.exe
-echo 'exec makensis "$@"' >> ~/.cache/workplace-meow-nsis-wrapper/makensis.exe
+printf '#!/usr/bin/env sh\nexec makensis "$@"\n' > ~/.cache/workplace-meow-nsis-wrapper/makensis.exe
 chmod +x ~/.cache/workplace-meow-nsis-wrapper/makensis.exe
 export PATH="$HOME/.cache/workplace-meow-nsis-wrapper:$PATH"
+
 npm run tauri:build:win
 ```
 
-或：
+**（3）产物位置**
+
+- Windows 安装包：`src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/` 下的 `*-setup.exe`
+- 仅 exe（不打包安装程序）：`src-tauri/target/x86_64-pc-windows-msvc/release/workplace-meow.exe`（需与 `dist/` 一起拷贝到 Windows 使用）
+
+首次构建时 cargo-xwin 会下载 Windows SDK，可能较慢；可设置缓存目录：`export XWIN_CACHE_DIR=~/.cache/xwin`。
+
+---
+
+## 三、开发教程
+
+### 1. 克隆与安装
 
 ```bash
-npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc
+git clone <仓库地址>
+cd Workplace-Meow
+npm install
 ```
 
-**3. 产物位置**
+### 2. 日常开发流程
 
-- 安装包：`src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/` 下的 `*-setup.exe`
+- **只改前端（React / TypeScript / 样式）**  
+  - 运行 `npm run tauri:dev`，保存后会自动热更新。
+- **改了 Rust（`src-tauri/src/`）或 Tauri 配置**  
+  - 同样用 `npm run tauri:dev`，会重新编译 Rust 再启动。
+- **只改前端且不想起 Tauri**  
+  - `npm run dev` 仅启动 Vite；此时没有 Tauri API（如 `invoke`、窗口拖动等），仅适合做纯 UI 调试。
 
-首次构建时 `cargo-xwin` 会下载 Windows SDK，可能较慢。多项目可共享缓存：`export XWIN_CACHE_DIR=~/.cache/xwin`。
+### 3. 项目结构速览
 
-若在 Linux 上执行 NSIS 打包时出现 `Can't detect any appindicator library` 并崩溃，可安装：`sudo pacman -S libappindicator`（Arch），然后重新运行打包脚本。若 **.exe 已成功生成**，也可直接使用 `src-tauri/target/x86_64-pc-windows-msvc/release/workplace-meow.exe`（需与 `dist/` 一起拷贝到 Windows 使用，或打 NSIS 安装包后分发）。
+```
+├── src/                      # 前端 (React + TypeScript)
+│   ├── App.tsx               # 主窗口：桌宠、拖动、聊天入口
+│   ├── constants.ts          # 预设角色(PERSONAS)、会话类型等
+│   ├── components/           # Live2D 桌宠等组件
+│   ├── pages/                # 设置页、聊天窗口
+│   ├── lib/                  # AI 提供商 (ai-providers.ts)
+│   ├── hooks/                # 鼠标跟随、打字动画、模型加载
+│   └── utils/                # Live2D 管理、调试日志
+├── src-tauri/                # Tauri 后端 (Rust)
+│   ├── src/
+│   │   ├── main.rs           # 入口
+│   │   └── lib.rs            # 命令：设置、窗口、截图、光标等
+│   ├── tauri.conf.json       # 窗口/打包配置
+│   ├── capabilities/         # 权限配置
+│   └── assets/               # 资源（如 Live2D 模型目录）
+├── scripts/
+│   └── build-windows.sh      # Linux 上打 Windows 包
+└── package.json
+```
+
+### 4. 常用命令
+
+| 命令 | 说明 |
+|------|------|
+| `npm run tauri:dev` | 开发模式运行（热更新） |
+| `npm run tauri:build` | 本机编译并打安装包 |
+| `npm run tauri:build:win` | 在 Linux 上交叉编译 Windows（需先装好依赖与 makensis 包装） |
+| `npm run build` | 仅打包前端到 `dist/` |
+| `npm run lint` | TypeScript 检查（`tsc --noEmit`） |
+
+### 5. 调试技巧
+
+- 主窗口白屏/无内容：用「启动教程」里的 `WORKPLACE_MEOW_DEBUG=1` 或「⋯ → 打开控制台」看 Console 报错。
+- Live2D 不显示：检查 `src-tauri/assets/models/` 下模型路径、`index.html` 中 Live2D 脚本是否先于业务代码加载。
+- 改 Rust 后不生效：先 `npm run tauri:build` 或再次 `tauri dev` 确保重新编译。
+
+---
 
 ## 使用说明
 
-详细使用指南请查看：
-- [USAGE.md](USAGE.md) - 基本使用指南
-- [LIVE2D_MODELS.md](LIVE2D_MODELS.md) - Live2D 模型管理
-- [SYSTEM_FEATURES.md](SYSTEM_FEATURES.md) - 系统级交互功能详解
+- **启动**：运行后桌面出现透明窗口和桌宠。
+- **聊天**：双击桌宠或点击右上角聊天图标，打开独立聊天窗口；可新建多会话、每会话选不同角色（预设/个人设定）。
+- **设置**：右上角设置 → 配置 AI 提供商与 API Key、Live2D 模型路径、自定义助手名称与系统提示词。
+- **拖动**：在非按钮区域按住并移动鼠标可拖动主窗口；右下角「⋯」可锁定/解锁拖动。
+- **关闭**：「⋯」→「关闭程序」。
 
-快速开始：
-
-1. **启动应用** - 运行后会在桌面显示一个透明窗口，包含宠物形象
-2. **打开聊天** - 双击宠物或点击右上角聊天按钮
-3. **配置设置** - 点击右上角设置按钮，配置 AI 提供商和模型
-4. **自定义宠物** - 在设置中选择 Live2D 模型或导入自定义模型
-5. **点击穿透** - 默认启用，鼠标会穿透到下层窗口，悬停在按钮上时会自动关闭
-6. **剪贴板助手** - 复制文本后桌宠会弹出询问是否需要高情商回复
-7. **自动关怀** - 连续工作2小时会收到休息提醒和鼓励
-8. **情感互动** - 对话时桌宠会根据回复内容显示不同表情，眼睛跟随鼠标移动
-
-## 项目结构
-
-```
-├── src/
-│   ├── components/     # React 组件
-│   ├── pages/          # 页面组件
-│   ├── lib/            # AI 提供商服务
-│   │   ├── ai-providers.ts        # AI提供商统一接口
-│   │   └── sentiment-analysis.ts  # 情感分析
-│   ├── hooks/          # React Hooks
-│   │   ├── useModel.ts          # Live2D模型管理
-│   │   ├── useMouseTracking.ts   # 鼠标跟随和动画
-│   │   ├── useSystemMonitor.ts   # 剪贴板和番茄钟
-│   │   └── useActivityMonitoring.ts  # 截屏和关怀
-│   ├── utils/          # 工具函数
-│   └── constants.ts    # 常量定义
-├── src-tauri/          # Tauri Rust 后端
-│   ├── src/
-│   │   ├── main.rs     # 入口文件
-│   │   └── lib.rs      # 核心逻辑和截图功能
-│   └── tauri.conf.json # Tauri 配置
-└── package.json        # Node.js 依赖
-```
+更多说明可参考项目内文档（若有）：USAGE.md、LIVE2D_MODELS.md 等。
 
 ## 技术栈
 
-- 前端：React + TypeScript + Tailwind CSS
-- 桌面框架：Tauri 2
-- Live2D：pixi-live2d-display（参考 [BongoCat](https://github.com/ayangweb/BongoCat) 的实现）
-- 动画：Framer Motion
-- 图标：Lucide React
+- 前端：React 19 + TypeScript + Vite + Tailwind CSS + Framer Motion
+- 桌面：Tauri 2
+- Live2D：pixi-live2d-display + Pixi.js
 
-## 感谢
+## 致谢
 
-本项目参考了 [ayangweb/BongoCat](https://github.com/ayangweb/BongoCat) 的 Live2D 实现，感谢开源社区的支持！
+Live2D 集成参考了 [BongoCat](https://github.com/ayangweb/BongoCat)，感谢开源社区。
 
 ## License
 

@@ -56,9 +56,14 @@ export function useGlobalMouseFollow(
   getShouldSkip: boolean | (() => boolean) | React.MutableRefObject<() => boolean> = false
 ) {
   const manager = Live2DManager.getInstance();
-  const appWindow = getCurrentWebviewWindow();
 
   useEffect(() => {
+    let appWindow: Awaited<ReturnType<typeof getCurrentWebviewWindow>> | null = null;
+    try {
+      appWindow = getCurrentWebviewWindow();
+    } catch (_) {
+      return;
+    }
     let raf = 0;
     const tick = async () => {
       let shouldSkip: boolean;
@@ -73,6 +78,7 @@ export function useGlobalMouseFollow(
         raf = requestAnimationFrame(tick);
         return;
       }
+      if (!appWindow) return;
       try {
         const [cursor, pos, size, scaleFactor] = await Promise.all([
           invoke<[number, number]>('get_global_cursor_position'),

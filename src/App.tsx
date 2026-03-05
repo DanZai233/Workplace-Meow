@@ -18,13 +18,39 @@ let aiService: AIService | null = null;
 const SESSIONS_STORAGE_KEY = 'workplace-meow-sessions';
 const ACTIVE_SESSION_KEY = 'workplace-meow-active-session-id';
 
+function isValidPersona(p: unknown): p is Persona {
+  return p != null && typeof p === 'object' && 'id' in p && 'name' in p && 'prompt' in p;
+}
+
+function normalizeSession(s: unknown): ChatSession | null {
+  if (!s || typeof s !== 'object' || !('id' in s) || !('messages' in s) || !('persona' in s)) return null;
+  const o = s as Record<string, unknown>;
+  const persona = o.persona;
+  const validPersona = isValidPersona(persona) ? persona : PERSONAS[0];
+  const messages = Array.isArray(o.messages)
+    ? (o.messages as Message[]).filter(m => m && typeof m === 'object' && 'id' in m && 'role' in m && 'text' in m)
+    : [];
+  return {
+    id: String(o.id ?? ''),
+    title: String(o.title ?? '新会话'),
+    persona: validPersona,
+    messages,
+    createdAt: Number(o.createdAt ?? Date.now()),
+  };
+}
+
 function loadSessionsFromStorage(): ChatSession[] {
   try {
     const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((s: unknown) => s && typeof s === 'object' && 'id' in s && 'messages' in s && 'persona' in s);
+    const out: ChatSession[] = [];
+    for (const item of parsed) {
+      const s = normalizeSession(item);
+      if (s && s.id) out.push(s);
+    }
+    return out;
   } catch {
     return [];
   }
@@ -86,7 +112,6 @@ export default function App() {
     model: 'gemini-2.5-pro',
   });
   
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { currentModel } = useModel();
   const { startTyping, stopTyping } = useTypingAnimation();
   useGlobalMouseFollow(skipMouseFollowRef);
@@ -109,7 +134,11 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (sessions.length > 0 && (!activeSessionId || !sessions.some(s => s.id === activeSessionId))) {
+    if (sessions.length === 0) {
+      setSessions([createEmptySession(PERSONAS[0])]);
+      return;
+    }
+    if (!activeSessionId || !sessions.some(s => s.id === activeSessionId)) {
       setActiveSessionId(sessions[0].id);
     }
   }, [sessions, activeSessionId]);
@@ -196,10 +225,6 @@ export default function App() {
     };
   }, []);
 
-  // Scroll to bottom
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   // Initialize AI service when config changes
   useEffect(() => {
