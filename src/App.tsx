@@ -93,17 +93,8 @@ export default function App() {
   const [dragEnabled, setDragEnabled] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef = useRef(false);
-  const dragStartRef = useRef<{
-    winX: number;
-    winY: number;
-    mouseX: number;
-    mouseY: number;
-    scaleFactor: number;
-  } | null>(null);
-  const DRAG_THRESHOLD_PX = 5;
   const skipMouseFollowRef = useRef<() => boolean>(() => false);
-  skipMouseFollowRef.current = () => isGenerating || isDraggingRef.current;
+  skipMouseFollowRef.current = () => isGenerating;
   const chatStateRef = useRef<Record<string, unknown>>({});
   const handleSendRef = useRef<(text: string) => Promise<void>>(() => Promise.resolve());
   const [aiConfig, setAiConfig] = useState<AIConfig>({
@@ -243,56 +234,18 @@ export default function App() {
     return () => document.removeEventListener('click', close);
   }, [menuOpen]);
 
-  // 手动拖动窗口：仅移动超过阈值才算拖动，并用 scaleFactor 修正位移（跟手）
+  // 手动拖动窗口：使用 Tauri 提供的原生 startDragging 方法
   const handleDragStart = async (e: React.MouseEvent) => {
     if (!dragEnabled || (e.target as HTMLElement).closest('button')) return;
+    // 只有鼠标左键按下时才触发拖拽
+    if (e.button !== 0) return;
     e.preventDefault();
     try {
-      const [winX, winY] = await invoke<[number, number]>('get_window_position');
-      const scaleFactor = await getCurrentWebviewWindow().scaleFactor();
-      dragStartRef.current = {
-        winX,
-        winY,
-        mouseX: e.clientX,
-        mouseY: e.clientY,
-        scaleFactor,
-      };
+      await getCurrentWebviewWindow().startDragging();
     } catch (err) {
-      console.error('get_window_position failed', err);
-      dragStartRef.current = null;
+      console.error('startDragging failed', err);
     }
   };
-  useEffect(() => {
-    if (!dragEnabled) return;
-    const onMove = async (e: MouseEvent) => {
-      const start = dragStartRef.current;
-      if (!start) return;
-      const dx = e.clientX - start.mouseX;
-      const dy = e.clientY - start.mouseY;
-      if (!isDraggingRef.current) {
-        if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
-        isDraggingRef.current = true;
-        const [winX, winY] = await invoke<[number, number]>('get_window_position').catch(() => [start.winX, start.winY]);
-        dragStartRef.current = { ...start, winX, winY, mouseX: e.clientX, mouseY: e.clientY };
-      }
-      const scale = dragStartRef.current.scaleFactor;
-      const { winX, winY, mouseX, mouseY } = dragStartRef.current;
-      invoke('set_window_position', {
-        x: Math.round(winX + (e.clientX - mouseX) * scale),
-        y: Math.round(winY + (e.clientY - mouseY) * scale),
-      }).catch(() => {});
-    };
-    const onUp = () => {
-      isDraggingRef.current = false;
-      dragStartRef.current = null;
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, [dragEnabled]);
 
   const loadSettings = async () => {
     try {

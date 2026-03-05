@@ -59,6 +59,12 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Ensure Windows .ico icon exists
+        if: matrix.platform == 'windows-latest'
+        run: |
+          python scripts/gen_ico.py
+        working-directory: ${{ github.workspace }}
+
       - name: Build (Tauri)
         uses: tauri-apps/tauri-action@v0
         env:
