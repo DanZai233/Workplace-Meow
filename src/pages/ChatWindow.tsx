@@ -135,16 +135,14 @@ export default function ChatWindow() {
 
       {/* 主聊天区 */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div
-          data-tauri-drag-region
-          className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center justify-between shrink-0 cursor-move"
-        >
-          <div className="flex items-center gap-2 flex-1 min-w-0" ref={personaMenuRef}>
+        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 pl-2 pr-4 py-2.5 flex items-center shrink-0">
+          <div data-tauri-drag-region className="flex-1 min-w-0 self-stretch cursor-move" />
+          <div className="flex items-center gap-2 shrink-0" ref={personaMenuRef}>
             <button
               type="button"
               onClick={() => setPersonaMenuOpen(o => !o)}
-              className="flex items-center gap-2 min-w-0 rounded-lg hover:bg-white/20 px-2 py-1 -mx-2 transition-colors text-left"
-              title="当前会话角色"
+              className="flex items-center gap-2 min-w-0 rounded-lg hover:bg-white/20 px-2 py-1 transition-colors text-left"
+              title="点击切换对话角色"
             >
               <span className="text-lg shrink-0">{persona.icon}</span>
               <span className="font-semibold text-white text-sm truncate">{persona.name}</span>
