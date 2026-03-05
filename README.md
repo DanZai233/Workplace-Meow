@@ -127,6 +127,27 @@ npm run tauri:build:win
 
 首次构建时 cargo-xwin 会下载 Windows SDK，可能较慢；可设置缓存目录：`export XWIN_CACHE_DIR=~/.cache/xwin`。
 
+### 3. GitHub Actions 自动构建（Windows / Linux / macOS）
+
+仓库已配置 GitHub Actions，可在云端自动打出各平台安装包并生成 Release。
+
+**触发方式：**
+
+- **发布版本**：推送版本 tag 即可，例如  
+  `git tag v0.1.0 && git push origin v0.1.0`  
+  会触发构建，并创建 Draft Release，产物上传到该 Release（可改为正式发布）。
+- **仅构建**：在 GitHub 仓库 **Actions** 页选择 “Build and Release”，点击 “Run workflow” 手动运行，同样会生成 Draft Release 与各平台产物。
+
+**构建矩阵：**
+
+| 平台 | 产物说明 |
+|------|----------|
+| Windows | NSIS 安装包 `*_x64-setup.exe` 等 |
+| Linux (Ubuntu 22.04) | `.deb`、AppImage、`.rpm` 等 |
+| macOS | Intel 与 Apple Silicon (M1+) 的 `.dmg` / `.app` |
+
+首次运行前请在仓库 **Settings → Actions → General → Workflow permissions** 中勾选 **Read and write permissions**，否则无法创建 Release。
+
 ---
 
 ## 三、开发教程

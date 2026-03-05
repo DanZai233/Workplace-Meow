@@ -1,0 +1,76 @@
+# 职场桌宠 - 多平台自动构建 (Windows / Linux / macOS)
+# 触发：推送 tag v* 时创建 Release；也可在 Actions 页手动 Run workflow 仅构建
+name: Build and Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS: Apple Silicon (M1+)
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+          # macOS: Intel
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+          # Linux x64
+          - platform: ubuntu-22.04
+            args: ''
+          # Windows x64
+          - platform: windows-latest
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build (Tauri)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: '职场桌宠 v__VERSION__'
+          releaseBody: |
+            ## 下载
+            - **Windows**: 下载 `*_x64-setup.exe` 或 `*_x64-setup.nsis.zip` 安装
+            - **macOS**: 下载 `.dmg` 或 `.app.tar.gz`（Intel / Apple Silicon 按文件名区分）
+            - **Linux**: 下载 `.deb`、`.AppImage` 或 `.rpm`
+          releaseDraft: true
+          prerelease: ${{ github.event_name == 'push' && github.ref != 'refs/heads/main' }}
+          args: ${{ matrix.args }}
