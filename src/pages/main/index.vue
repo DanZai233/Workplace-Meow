@@ -24,9 +24,11 @@ import { join } from '@/utils/path'
 import { clearObject } from '@/utils/shared'
 import { useSystemMonitor } from '@/composables/useSystemMonitor'
 import { useActivityMonitoring } from '@/composables/useActivityMonitoring'
+import { useChatReaction } from '@/composables/useChatReaction'
 
 const { clipboardText, showClipboardAlert, handleClipboardAlert, showPomodoroAlert, handlePomodoroAlert, workDuration, formatDuration } = useSystemMonitor()
 const { currentActivity, showActivityBubble, showEncouragementBubble, encouragementMessage } = useActivityMonitoring()
+const { showCareBubble, careBubbleText } = useChatReaction()
 
 const { startListening } = useDevice()
 const appWindow = getCurrentWebviewWindow()
@@ -193,7 +195,7 @@ function handleMouseMove(event: MouseEvent) {
 
     <!-- WorkplaceMeow Extra Features Bubbles -->
     <div
-      v-if="showClipboardAlert || showPomodoroAlert || showActivityBubble || showEncouragementBubble"
+      v-if="showClipboardAlert || showPomodoroAlert || showActivityBubble || showEncouragementBubble || showCareBubble"
       class="absolute bottom-8 right-8 z-50 bg-white/90 backdrop-blur text-slate-800 px-4 py-3 rounded-2xl shadow-xl border border-slate-200 max-w-[280px] text-sm font-medium pointer-events-auto"
     >
       <div v-if="showClipboardAlert">
@@ -211,6 +213,9 @@ function handleMouseMove(event: MouseEvent) {
       <div v-else-if="showActivityBubble">
         <p>👀 侦测到你正在：{{ currentActivity }}</p>
         <p class="text-xs text-slate-400 mt-1">我可以帮你什么吗？</p>
+      </div>
+      <div v-else-if="showCareBubble">
+        <p>🐱 {{ careBubbleText }}</p>
       </div>
       <div class="absolute top-full right-8 border-[6px] border-transparent border-t-white/90 drop-shadow-sm"></div>
     </div>

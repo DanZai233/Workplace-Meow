@@ -4,7 +4,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 import { LISTEN_KEY } from '../constants'
 
-type WindowLabel = 'main' | 'preference'
+type WindowLabel = 'main' | 'preference' | 'chat'
 
 const COMMAND = {
   SHOW_WINDOW: 'plugin:custom-window|show_window',

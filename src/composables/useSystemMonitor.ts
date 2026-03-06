@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 import { AIService, type AIConfig } from '@/utils/ai-providers'
 import { invoke } from '@tauri-apps/api/core'

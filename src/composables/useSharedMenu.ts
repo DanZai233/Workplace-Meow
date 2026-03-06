@@ -3,7 +3,6 @@ import { range } from 'es-toolkit'
 import { useI18n } from 'vue-i18n'
 
 import { showWindow } from '@/plugins/window'
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { useCatStore } from '@/stores/cat'
 import { isMac } from '@/utils/platform'
 
@@ -64,14 +63,7 @@ export function useSharedMenu() {
       MenuItem.new({
         text: '💬 聊天',
         action: () => {
-          new WebviewWindow('chat', {
-            url: 'index.html#/chat',
-            title: '聊天',
-            width: 600,
-            height: 640,
-            center: true,
-            decorations: true
-          })
+          showWindow('chat')
         },
       }),
       MenuItem.new({

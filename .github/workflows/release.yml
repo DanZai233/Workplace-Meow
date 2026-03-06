@@ -1,4 +1,4 @@
-name: BongoCat Release
+name: Workplace-Meow Release
 
 on:
   push:
@@ -103,7 +103,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: BongoCat ${{ needs.create-release.outputs.APP_VERSION }}
+          releaseName: Workplace-Meow ${{ needs.create-release.outputs.APP_VERSION }}
           releaseBody: ''
           releaseDraft: true
           prerelease: false

@@ -11,10 +11,19 @@ struct Settings {
     api_key: String,
     #[serde(default = "default_model_name")]
     model_name: String,
+    #[serde(default = "default_assistant_name")]
+    custom_assistant_name: String,
+    #[serde(default = "default_assistant_icon")]
+    custom_assistant_icon: String,
+    #[serde(default = "default_assistant_prompt")]
+    custom_assistant_prompt: String,
 }
 
 fn default_ai_provider() -> String { "gemini".to_string() }
 fn default_model_name() -> String { "gemini-2.5-pro".to_string() }
+fn default_assistant_name() -> String { "职场喵".to_string() }
+fn default_assistant_icon() -> String { "🐱".to_string() }
+fn default_assistant_prompt() -> String { "你是一个超级厉害的职场助手，你熟悉所有的编程、营销、策划知识。".to_string() }
 
 fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
     let app_data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
@@ -55,6 +64,15 @@ pub fn save_settings(app: tauri::AppHandle, settings: serde_json::Value) -> Resu
         }
         if let Some(val) = obj.get("model_name").and_then(|v| v.as_str()) {
             existing.model_name = val.to_string();
+        }
+        if let Some(val) = obj.get("custom_assistant_name").and_then(|v| v.as_str()) {
+            existing.custom_assistant_name = val.to_string();
+        }
+        if let Some(val) = obj.get("custom_assistant_icon").and_then(|v| v.as_str()) {
+            existing.custom_assistant_icon = val.to_string();
+        }
+        if let Some(val) = obj.get("custom_assistant_prompt").and_then(|v| v.as_str()) {
+            existing.custom_assistant_prompt = val.to_string();
         }
     }
     
