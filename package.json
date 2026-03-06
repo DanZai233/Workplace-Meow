@@ -33,7 +33,6 @@
     "@tauri-apps/plugin-opener": "~2.2.7",
     "@tauri-apps/plugin-os": "^2.2.1",
     "@tauri-apps/plugin-process": "^2.2.1",
-    "@tauri-apps/plugin-updater": "~2.7.1",
     "@tauri-store/pinia": "^3.7.0",
     "@vueuse/core": "^13.3.0",
     "ant-design-vue": "^4.2.6",

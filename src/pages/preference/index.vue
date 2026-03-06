@@ -11,7 +11,6 @@ import Model from './components/model/index.vue'
 import Shortcut from './components/shortcut/index.vue'
 import AI from './components/ai/index.vue'
 
-import UpdateApp from '@/components/update-app/index.vue'
 import { useTray } from '@/composables/useTray'
 import { useAppStore } from '@/stores/app'
 import { useGeneralStore } from '@/stores/general'
@@ -113,6 +112,4 @@ const menus = computed(() => [
       <component :is="item.component" />
     </div>
   </Flex>
-
-  <UpdateApp />
 </template>
