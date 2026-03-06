@@ -1,6 +1,5 @@
 use std::fs;
 use std::process::Command;
-use tauri::Manager;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[tauri::command]
