@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct Settings {
@@ -11,6 +11,8 @@ struct Settings {
     api_key: String,
     #[serde(default = "default_model_name")]
     model_name: String,
+    #[serde(default)]
+    custom_base_url: String,
     #[serde(default = "default_assistant_name")]
     custom_assistant_name: String,
     #[serde(default = "default_assistant_icon")]
@@ -19,16 +21,27 @@ struct Settings {
     custom_assistant_prompt: String,
 }
 
-fn default_ai_provider() -> String { "gemini".to_string() }
-fn default_model_name() -> String { "gemini-2.5-pro".to_string() }
-fn default_assistant_name() -> String { "职场喵".to_string() }
-fn default_assistant_icon() -> String { "🐱".to_string() }
-fn default_assistant_prompt() -> String { "你是一个超级厉害的职场助手，你熟悉所有的编程、营销、策划知识。".to_string() }
+fn default_ai_provider() -> String {
+    "gemini".to_string()
+}
+fn default_model_name() -> String {
+    "gemini-2.5-pro".to_string()
+}
+fn default_assistant_name() -> String {
+    "职场喵".to_string()
+}
+fn default_assistant_icon() -> String {
+    "🐱".to_string()
+}
+fn default_assistant_prompt() -> String {
+    "你是一个超级厉害的职场助手，你熟悉所有的编程、营销、策划知识。".to_string()
+}
 
 fn get_settings_path(app: &tauri::AppHandle) -> PathBuf {
-    let app_data_dir = app.path().app_data_dir().unwrap_or_else(|_| {
-        std::env::temp_dir().join("workplace-meow")
-    });
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("workplace-meow"));
     let _ = fs::create_dir_all(&app_data_dir);
     app_data_dir.join("settings.json")
 }
@@ -54,7 +67,7 @@ pub fn save_settings(app: tauri::AppHandle, settings: serde_json::Value) -> Resu
     } else {
         Settings::default()
     };
-    
+
     if let Some(obj) = settings.as_object() {
         if let Some(val) = obj.get("ai_provider").and_then(|v| v.as_str()) {
             existing.ai_provider = val.to_string();
@@ -64,6 +77,9 @@ pub fn save_settings(app: tauri::AppHandle, settings: serde_json::Value) -> Resu
         }
         if let Some(val) = obj.get("model_name").and_then(|v| v.as_str()) {
             existing.model_name = val.to_string();
+        }
+        if let Some(val) = obj.get("custom_base_url").and_then(|v| v.as_str()) {
+            existing.custom_base_url = val.to_string();
         }
         if let Some(val) = obj.get("custom_assistant_name").and_then(|v| v.as_str()) {
             existing.custom_assistant_name = val.to_string();
@@ -75,7 +91,7 @@ pub fn save_settings(app: tauri::AppHandle, settings: serde_json::Value) -> Resu
             existing.custom_assistant_prompt = val.to_string();
         }
     }
-    
+
     let json = serde_json::to_string_pretty(&existing).map_err(|e| e.to_string())?;
     fs::write(&settings_path, json).map_err(|e| e.to_string())
 }
